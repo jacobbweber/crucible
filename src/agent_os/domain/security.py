@@ -32,3 +32,18 @@ class StoredCredential(BaseModel):
 
     metadata: PublicCredentialMetadata
     payload: dict[str, str]
+
+
+class ResolvedParameters(BaseModel):
+    """Parameters with vault aliases resolved to raw secrets, tracking aliases and secrets."""
+
+    resolved_params: dict[str, str | int | float | bool | None]
+    resolved_aliases: list[str] = Field(default_factory=list)
+    secrets_to_scrub: list[str] = Field(default_factory=list)
+
+
+class ScrubbedOutput(BaseModel):
+    """Sanitized text output with redaction statistics."""
+
+    sanitized_text: str
+    redaction_count: int = 0

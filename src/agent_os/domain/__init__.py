@@ -20,6 +20,8 @@ from agent_os.domain.policy import (
 from agent_os.domain.security import (
     CredentialType,
     PublicCredentialMetadata,
+    ResolvedParameters,
+    ScrubbedOutput,
     StoredCredential,
 )
 from agent_os.domain.session import JourneyRecord, SessionRecord, TurnRecord
@@ -54,6 +56,8 @@ __all__ = [
     "ProtectedFolder",
     "PublicCredentialMetadata",
     "RecalledFactsPayload",
+    "ResolvedParameters",
+    "ScrubbedOutput",
     "SessionRecord",
     "StoredCredential",
     "StreamChunk",
