@@ -38,6 +38,7 @@ class RecipeChamber:
         ]
         runner_req = RunnerExecutionRequest(
             task=request.task,
+            modality="react" if tools else "direct",
             system_prompt=request.packet.system_prompt,
             timeout_seconds=request.timeout_seconds,
             tools=tools,

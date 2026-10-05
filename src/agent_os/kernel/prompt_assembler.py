@@ -10,7 +10,11 @@ class PromptAssembler:
     def __init__(self, config: CompanionConfig) -> None:
         self.config = config
 
-    def assemble_system_prompt(self, recalled_facts_block: str = "") -> AssembledSystemPrompt:
+    def assemble_system_prompt(
+        self,
+        recalled_facts_block: str = "",
+        background_completions_block: str = "",
+    ) -> AssembledSystemPrompt:
         """Render companion system prompt with scoped human profile and operating boundaries."""
         sections: list[str] = [
             f"You are {self.config.name}, an AI companion operating within agent-os."
@@ -34,8 +38,20 @@ class PromptAssembler:
             sections.append("\n".join(profile_lines))
 
         if recalled_facts_block.strip():
-            facts_block = f"<recalled_facts>\n{recalled_facts_block.strip()}\n</recalled_facts>"
-            sections.append(facts_block)
+            raw_facts = recalled_facts_block.strip()
+            if "<recalled_facts>" in raw_facts:
+                sections.append(raw_facts)
+            else:
+                sections.append(f"<recalled_facts>\n{raw_facts}\n</recalled_facts>")
+
+        if background_completions_block.strip():
+            raw_completions = background_completions_block.strip()
+            if "<background_completions>" in raw_completions:
+                sections.append(raw_completions)
+            else:
+                sections.append(
+                    f"<background_completions>\n{raw_completions}\n</background_completions>"
+                )
 
         core_boundaries = (
             "Core Operating Boundaries:\n"

@@ -53,6 +53,7 @@ class CompanionChatLoop:
         self,
         user_input: str,
         recalled_facts_block: str = "",
+        background_completions_block: str = "",
     ) -> AsyncIterator[StreamTurnEvent]:
         """Execute a single conversational turn with streaming inference and persistence."""
         try:
@@ -63,7 +64,10 @@ class CompanionChatLoop:
                 token_count=len(user_input) // 4,
             )
 
-            assembled = self.assembler.assemble_system_prompt(recalled_facts_block)
+            assembled = self.assembler.assemble_system_prompt(
+                recalled_facts_block=recalled_facts_block,
+                background_completions_block=background_completions_block,
+            )
 
             recent_turns = self.session_repo.get_recent_turns(
                 self.session_id, limit=self.sliding_window_size + 1

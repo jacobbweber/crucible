@@ -42,7 +42,11 @@ class CompletionSignaler:
 
     def drain_deferred_completions(self, session_id: str) -> list[SubJobReturnEnvelope]:
         """Pop and clear all deferred completion return envelopes for session_id."""
-        return self._deferred_buffers.pop(session_id, [])
+        envelopes = self._deferred_buffers.pop(session_id, [])
+        if session_id != "system_scheduler":
+            system_envelopes = self._deferred_buffers.pop("system_scheduler", [])
+            envelopes.extend(system_envelopes)
+        return envelopes
 
     def format_deferred_prompt_block(self, session_id: str) -> str:
         """Drain deferred envelopes and format as an XML block for prompt injection."""

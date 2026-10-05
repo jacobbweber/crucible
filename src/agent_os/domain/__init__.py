@@ -19,6 +19,7 @@ from agent_os.domain.education import (
 )
 from agent_os.domain.gateway import ChatMessage, CompletionRequest, StreamChunk
 from agent_os.domain.ipc import SubJobExecutionRequest, SubJobReturnEnvelope
+from agent_os.domain.kernel import KernelConfig, TurnResponse, UserTurnRequest
 from agent_os.domain.memory import FactRecord, FactSearchResult, RecalledFactsPayload
 from agent_os.domain.pipeline import (
     CapabilityGapReport,
@@ -94,6 +95,7 @@ __all__ = [
     "HumanProfile",
     "JobAssemblyRequest",
     "JourneyRecord",
+    "KernelConfig",
     "NoteFrontmatter",
     "NoteRecord",
     "PedagogicalStage",
@@ -130,4 +132,6 @@ __all__ = [
     "ToolExecutionResult",
     "ToolParameterSchema",
     "TurnRecord",
+    "TurnResponse",
+    "UserTurnRequest",
 ]

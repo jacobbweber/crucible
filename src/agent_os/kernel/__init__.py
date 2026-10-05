@@ -7,6 +7,7 @@ from agent_os.kernel.dispatcher import ZeroCatalogDispatcher
 from agent_os.kernel.education_tools import EducationToolSuite
 from agent_os.kernel.fact_prefetcher import FactPrefetcher
 from agent_os.kernel.graduation import GraduationService
+from agent_os.kernel.master_kernel import AgentOSKernel
 from agent_os.kernel.pedagogical import PedagogicalOrchestrator
 from agent_os.kernel.pipeline import JobAssemblyPipeline
 from agent_os.kernel.policy_gate import ToolPolicyGate
@@ -22,6 +23,7 @@ from agent_os.kernel.tone import get_tone_instructions
 from agent_os.kernel.wiki_tools import WikiToolSuite
 
 __all__ = [
+    "AgentOSKernel",
     "CompanionChatLoop",
     "CompletionSignaler",
     "CredentialProxyGate",
