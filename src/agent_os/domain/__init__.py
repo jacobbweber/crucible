@@ -18,6 +18,12 @@ from agent_os.domain.policy import (
     ToolCallRequest,
 )
 from agent_os.domain.recipe import RecipeMatch, RecipeMetadata, RecipeRecord
+from agent_os.domain.runner import (
+    ExecutionModality,
+    RunnerExecutionRequest,
+    RunnerResult,
+    RunnerStepEvent,
+)
 from agent_os.domain.security import (
     CredentialType,
     PublicCredentialMetadata,
@@ -49,6 +55,7 @@ __all__ = [
     "CompanionConfig",
     "CompletionRequest",
     "CredentialType",
+    "ExecutionModality",
     "FactRecord",
     "FactSearchResult",
     "GraduationFailure",
@@ -66,6 +73,9 @@ __all__ = [
     "RecipeMetadata",
     "RecipeRecord",
     "ResolvedParameters",
+    "RunnerExecutionRequest",
+    "RunnerResult",
+    "RunnerStepEvent",
     "ScrubbedOutput",
     "SessionRecord",
     "StoredCredential",
