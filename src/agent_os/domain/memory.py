@@ -22,3 +22,12 @@ class FactSearchResult(BaseModel):
 
     fact: FactRecord
     score: float = 0.0
+
+
+class RecalledFactsPayload(BaseModel):
+    """Schema representing recalled facts and token budget estimates."""
+
+    rendered_block: str = ""
+    recalled_count: int = 0
+    token_estimate: int = 0
+    matched_entity_keys: list[str] = Field(default_factory=list)

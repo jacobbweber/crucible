@@ -9,7 +9,7 @@ from agent_os.domain.companion import (
 from agent_os.domain.config import AppConfig
 from agent_os.domain.continuum import ChatSessionState, StreamTurnEvent
 from agent_os.domain.gateway import ChatMessage, CompletionRequest, StreamChunk
-from agent_os.domain.memory import FactRecord, FactSearchResult
+from agent_os.domain.memory import FactRecord, FactSearchResult, RecalledFactsPayload
 from agent_os.domain.security import (
     CredentialType,
     PublicCredentialMetadata,
@@ -42,6 +42,7 @@ __all__ = [
     "NoteRecord",
     "ProtectedFolder",
     "PublicCredentialMetadata",
+    "RecalledFactsPayload",
     "SessionRecord",
     "StoredCredential",
     "StreamChunk",
