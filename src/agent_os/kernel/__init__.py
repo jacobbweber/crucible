@@ -7,6 +7,8 @@ from agent_os.kernel.fact_prefetcher import FactPrefetcher
 from agent_os.kernel.graduation import GraduationService
 from agent_os.kernel.policy_gate import ToolPolicyGate
 from agent_os.kernel.prompt_assembler import PromptAssembler
+from agent_os.kernel.recipe_chamber import RecipeChamber
+from agent_os.kernel.return_marshaller import SubJobMarshaller
 from agent_os.kernel.runbook_parser import PocockRunbookParser
 from agent_os.kernel.runner import NativeRunner
 from agent_os.kernel.tone import get_tone_instructions
@@ -20,6 +22,8 @@ __all__ = [
     "NativeRunner",
     "PocockRunbookParser",
     "PromptAssembler",
+    "RecipeChamber",
+    "SubJobMarshaller",
     "TaskBriefAssembler",
     "ToolPolicyGate",
     "WikiToolSuite",

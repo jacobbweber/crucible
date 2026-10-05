@@ -123,7 +123,29 @@ class NativeRunner:
                             thought = cleaned_pre if cleaned_pre else f"Calling tool: {tool_name}"
                         return str(thought), tool_name, parameters
                 except json.JSONDecodeError:
-                    pass
+                    try:
+                        sanitized = re.sub(r"\bTrue\b", "true", json_str)
+                        sanitized = re.sub(r"\bFalse\b", "false", sanitized)
+                        sanitized = re.sub(r"\bNone\b", "null", sanitized)
+                        data = json.loads(sanitized)
+                        if (
+                            isinstance(data, dict)
+                            and "action" in data
+                            and isinstance(data["action"], str)
+                            and len(data["action"].strip()) > 0
+                        ):
+                            tool_name = data["action"].strip()
+                            raw_params = data.get("parameters", data.get("args", {}))
+                            parameters = raw_params if isinstance(raw_params, dict) else {}
+
+                            thought = data.get("thought")
+                            if not thought or not str(thought).strip():
+                                raw_pre = text[:idx]
+                                cleaned_pre = re.sub(r"```(?:json)?\s*$", "", raw_pre).strip()
+                                thought = cleaned_pre or f"Calling tool: {tool_name}"
+                            return str(thought), tool_name, parameters
+                    except json.JSONDecodeError:
+                        pass
                 start_pos = idx + 1
             else:
                 break
