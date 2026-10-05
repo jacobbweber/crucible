@@ -8,6 +8,7 @@ from agent_os.kernel.education_tools import EducationToolSuite
 from agent_os.kernel.fact_prefetcher import FactPrefetcher
 from agent_os.kernel.graduation import GraduationService
 from agent_os.kernel.pedagogical import PedagogicalOrchestrator
+from agent_os.kernel.pipeline import JobAssemblyPipeline
 from agent_os.kernel.policy_gate import ToolPolicyGate
 from agent_os.kernel.prompt_assembler import PromptAssembler
 from agent_os.kernel.recipe_chamber import RecipeChamber
@@ -28,6 +29,7 @@ __all__ = [
     "EmbeddedSchedulerDaemon",
     "FactPrefetcher",
     "GraduationService",
+    "JobAssemblyPipeline",
     "NativeRunner",
     "PedagogicalOrchestrator",
     "PocockRunbookParser",

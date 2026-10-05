@@ -20,6 +20,11 @@ from agent_os.domain.education import (
 from agent_os.domain.gateway import ChatMessage, CompletionRequest, StreamChunk
 from agent_os.domain.ipc import SubJobExecutionRequest, SubJobReturnEnvelope
 from agent_os.domain.memory import FactRecord, FactSearchResult, RecalledFactsPayload
+from agent_os.domain.pipeline import (
+    CapabilityGapReport,
+    JobAssemblyRequest,
+    PipelineExecutionResult,
+)
 from agent_os.domain.policy import (
     ActionTier,
     ApprovalMode,
@@ -68,6 +73,7 @@ __all__ = [
     "AppConfig",
     "ApprovalMode",
     "AssembledSystemPrompt",
+    "CapabilityGapReport",
     "CatchUpPolicy",
     "ChatMessage",
     "ChatSessionState",
@@ -86,10 +92,12 @@ __all__ = [
     "GraduationFailure",
     "GraduationReport",
     "HumanProfile",
+    "JobAssemblyRequest",
     "JourneyRecord",
     "NoteFrontmatter",
     "NoteRecord",
     "PedagogicalStage",
+    "PipelineExecutionResult",
     "PolicyDecision",
     "PolicyDecisionType",
     "ProtectedFolder",
