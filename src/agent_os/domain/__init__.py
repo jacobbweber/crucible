@@ -25,6 +25,11 @@ from agent_os.domain.security import (
     StoredCredential,
 )
 from agent_os.domain.session import JourneyRecord, SessionRecord, TurnRecord
+from agent_os.domain.tools import (
+    ToolDefinition,
+    ToolExecutionResult,
+    ToolParameterSchema,
+)
 from agent_os.domain.wiki import (
     GraduationFailure,
     GraduationReport,
@@ -64,5 +69,8 @@ __all__ = [
     "StreamTurnEvent",
     "TonePreset",
     "ToolCallRequest",
+    "ToolDefinition",
+    "ToolExecutionResult",
+    "ToolParameterSchema",
     "TurnRecord",
 ]

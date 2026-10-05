@@ -1,0 +1,289 @@
+"""Wiki tool implementations, parameter schemas, and execution handlers."""
+
+from agent_os.domain.policy import ActionTier
+from agent_os.domain.tools import (
+    ToolDefinition,
+    ToolExecutionResult,
+    ToolParameterSchema,
+)
+from agent_os.domain.wiki import NoteFrontmatter, ProtectedFolder
+from agent_os.infrastructure.wiki.frontmatter import parse_frontmatter
+from agent_os.infrastructure.wiki.store import WikiStore
+
+
+class WikiToolSuite:
+    """Tool suite providing agent access to the 4-folder wiki store."""
+
+    def __init__(self, wiki_store: WikiStore) -> None:
+        self.store = wiki_store
+        self.wiki_store = wiki_store
+
+    def get_definitions(self) -> list[ToolDefinition]:
+        """Return tool definitions and parameter schemas for all wiki capabilities."""
+        return [
+            ToolDefinition(
+                name="wiki_read",
+                description="Read and parse note frontmatter and body with line-bounded reading.",
+                action_tier=ActionTier.READ,
+                parameters=[
+                    ToolParameterSchema(
+                        name="path",
+                        type_name="string",
+                        description="Relative path of the note to read within the wiki vault.",
+                        required=True,
+                    ),
+                    ToolParameterSchema(
+                        name="max_lines",
+                        type_name="integer",
+                        description="Maximum number of body lines to read.",
+                        required=False,
+                        default=200,
+                    ),
+                ],
+            ),
+            ToolDefinition(
+                name="wiki_write",
+                description="Write or overwrite a note with validated YAML frontmatter.",
+                action_tier=ActionTier.STATE_CHANGE,
+                parameters=[
+                    ToolParameterSchema(
+                        name="path",
+                        type_name="string",
+                        description="Relative target path for the note.",
+                        required=True,
+                    ),
+                    ToolParameterSchema(
+                        name="title",
+                        type_name="string",
+                        description="Title of the note.",
+                        required=True,
+                    ),
+                    ToolParameterSchema(
+                        name="category",
+                        type_name="string",
+                        description="Category for the note.",
+                        required=True,
+                    ),
+                    ToolParameterSchema(
+                        name="tags",
+                        type_name="array",
+                        description="List of tags associated with the note.",
+                        required=True,
+                    ),
+                    ToolParameterSchema(
+                        name="body",
+                        type_name="string",
+                        description="Markdown body content of the note.",
+                        required=True,
+                    ),
+                    ToolParameterSchema(
+                        name="overwrite",
+                        type_name="boolean",
+                        description="Whether to overwrite existing file.",
+                        required=False,
+                        default=False,
+                    ),
+                ],
+            ),
+            ToolDefinition(
+                name="wiki_list_category",
+                description="List relative paths of notes inside a protected category folder.",
+                action_tier=ActionTier.READ,
+                parameters=[
+                    ToolParameterSchema(
+                        name="category",
+                        type_name="string",
+                        description="Protected category folder name (e.g. '01_Notes').",
+                        required=True,
+                    ),
+                ],
+            ),
+            ToolDefinition(
+                name="wiki_search",
+                description="Search notes under 01_Notes/ by query matching title, tags, or body.",
+                action_tier=ActionTier.READ,
+                parameters=[
+                    ToolParameterSchema(
+                        name="query",
+                        type_name="string",
+                        description="Search term to locate across note contents.",
+                        required=True,
+                    ),
+                    ToolParameterSchema(
+                        name="limit",
+                        type_name="integer",
+                        description="Maximum number of matched notes to return.",
+                        required=False,
+                        default=5,
+                    ),
+                ],
+            ),
+        ]
+
+    def wiki_read(self, path: str, max_lines: int = 200) -> ToolExecutionResult:
+        """Read note frontmatter and body content, enforcing max_lines ceiling."""
+        try:
+            target = self.store._resolve_safe_path(path)
+            if not target.is_file():
+                return ToolExecutionResult(
+                    tool_name="wiki_read",
+                    success=False,
+                    output="",
+                    error=f"Note not found: {path}",
+                )
+
+            raw_content = target.read_text(encoding="utf-8")
+            _, full_body = parse_frontmatter(raw_content)
+            total_lines = len(full_body.splitlines())
+            clamped = total_lines > max_lines
+
+            frontmatter, body = self.store.read_note(path, max_lines=max_lines)
+
+            meta_lines = [
+                "---",
+                f"title: {frontmatter.title}",
+                f"category: {frontmatter.category}",
+                f"tags: [{', '.join(frontmatter.tags)}]",
+                "---",
+                body,
+            ]
+            if clamped:
+                meta_lines.append(
+                    f"\n[Note clamped to {max_lines} lines; {total_lines} total lines in note]"
+                )
+
+            return ToolExecutionResult(
+                tool_name="wiki_read",
+                success=True,
+                output="\n".join(meta_lines),
+            )
+        except (FileNotFoundError, ValueError) as e:
+            return ToolExecutionResult(
+                tool_name="wiki_read",
+                success=False,
+                output="",
+                error=str(e),
+            )
+        except Exception as e:
+            return ToolExecutionResult(
+                tool_name="wiki_read",
+                success=False,
+                output="",
+                error=str(e),
+            )
+
+    def wiki_write(
+        self,
+        path: str,
+        title: str,
+        category: str,
+        tags: list[str],
+        body: str,
+        overwrite: bool = False,
+    ) -> ToolExecutionResult:
+        """Create or update a note with structured YAML frontmatter."""
+        try:
+            frontmatter = NoteFrontmatter(title=title, category=category, tags=tags)
+            self.store.write_note(path, frontmatter, body, overwrite=overwrite)
+            return ToolExecutionResult(
+                tool_name="wiki_write",
+                success=True,
+                output=f"Successfully written to {path}",
+            )
+        except Exception as e:
+            return ToolExecutionResult(
+                tool_name="wiki_write",
+                success=False,
+                output="",
+                error=str(e),
+            )
+
+    def wiki_list_category(self, category: str) -> ToolExecutionResult:
+        """List note relative paths within a designated protected folder category."""
+        valid_folders = [f.value for f in ProtectedFolder]
+        if category not in valid_folders:
+            return ToolExecutionResult(
+                tool_name="wiki_list_category",
+                success=False,
+                output="",
+                error=f"Invalid category '{category}'. Must be one of: {valid_folders}",
+            )
+
+        try:
+            folder = ProtectedFolder(category)
+            notes = self.store.list_category(folder)
+            if not notes:
+                output = f"No notes found in {category}."
+            else:
+                output = "\n".join(f"- {note}" for note in notes)
+
+            return ToolExecutionResult(
+                tool_name="wiki_list_category",
+                success=True,
+                output=output,
+            )
+        except Exception as e:
+            return ToolExecutionResult(
+                tool_name="wiki_list_category",
+                success=False,
+                output="",
+                error=str(e),
+            )
+
+    def wiki_search(self, query: str, limit: int = 5) -> ToolExecutionResult:
+        """Search markdown notes in 01_Notes/ matching query against title, tags, and body."""
+        notes_dir = self.store.root_dir / ProtectedFolder.NOTES.value
+        if not notes_dir.exists():
+            return ToolExecutionResult(
+                tool_name="wiki_search",
+                success=True,
+                output="No matches found.",
+            )
+
+        matches: list[str] = []
+        q = query.lower()
+
+        for file_path in sorted(notes_dir.rglob("*.md")):
+            if len(matches) >= limit:
+                break
+            try:
+                content = file_path.read_text(encoding="utf-8")
+                fm, body = parse_frontmatter(content)
+            except Exception:
+                continue
+
+            rel_path = str(file_path.relative_to(self.store.root_dir)).replace("\\", "/")
+
+            matched = False
+            snippet = ""
+
+            for line in body.splitlines():
+                if q in line.lower():
+                    matched = True
+                    snippet = line.strip()
+                    break
+
+            if not matched and q in fm.title.lower():
+                matched = True
+                snippet = fm.title
+
+            if not matched:
+                for tag in fm.tags:
+                    if q in tag.lower():
+                        matched = True
+                        snippet = f"Tag: {tag}"
+                        break
+
+            if matched:
+                matches.append(f"- [{rel_path}]: {snippet}")
+
+        if not matches:
+            output = f"No notes matched query: '{query}'"
+        else:
+            output = "\n".join(matches)
+
+        return ToolExecutionResult(
+            tool_name="wiki_search",
+            success=True,
+            output=output,
+        )
