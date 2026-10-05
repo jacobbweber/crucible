@@ -3,6 +3,7 @@
 from agent_os.kernel.brief_assembler import TaskBriefAssembler
 from agent_os.kernel.chat_loop import CompanionChatLoop
 from agent_os.kernel.credential_proxy import CredentialProxyGate
+from agent_os.kernel.dispatcher import ZeroCatalogDispatcher
 from agent_os.kernel.fact_prefetcher import FactPrefetcher
 from agent_os.kernel.graduation import GraduationService
 from agent_os.kernel.policy_gate import ToolPolicyGate
@@ -27,5 +28,6 @@ __all__ = [
     "TaskBriefAssembler",
     "ToolPolicyGate",
     "WikiToolSuite",
+    "ZeroCatalogDispatcher",
     "get_tone_instructions",
 ]

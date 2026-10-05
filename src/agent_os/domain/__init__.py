@@ -8,6 +8,7 @@ from agent_os.domain.companion import (
 )
 from agent_os.domain.config import AppConfig
 from agent_os.domain.continuum import ChatSessionState, StreamTurnEvent
+from agent_os.domain.dispatch import DispatchDecision, DispatchResult
 from agent_os.domain.gateway import ChatMessage, CompletionRequest, StreamChunk
 from agent_os.domain.ipc import SubJobExecutionRequest, SubJobReturnEnvelope
 from agent_os.domain.memory import FactRecord, FactSearchResult, RecalledFactsPayload
@@ -62,6 +63,8 @@ __all__ = [
     "CompiledExecutionPacket",
     "CompletionRequest",
     "CredentialType",
+    "DispatchDecision",
+    "DispatchResult",
     "ExecutionModality",
     "FactRecord",
     "FactSearchResult",
