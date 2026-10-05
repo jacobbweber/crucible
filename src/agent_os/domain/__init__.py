@@ -18,6 +18,11 @@ from agent_os.domain.policy import (
     ToolCallRequest,
 )
 from agent_os.domain.recipe import RecipeMatch, RecipeMetadata, RecipeRecord
+from agent_os.domain.runbook import (
+    CompiledExecutionPacket,
+    RunbookDefinition,
+    TaskBrief,
+)
 from agent_os.domain.runner import (
     ExecutionModality,
     RunnerExecutionRequest,
@@ -53,6 +58,7 @@ __all__ = [
     "ChatMessage",
     "ChatSessionState",
     "CompanionConfig",
+    "CompiledExecutionPacket",
     "CompletionRequest",
     "CredentialType",
     "ExecutionModality",
@@ -73,6 +79,7 @@ __all__ = [
     "RecipeMetadata",
     "RecipeRecord",
     "ResolvedParameters",
+    "RunbookDefinition",
     "RunnerExecutionRequest",
     "RunnerResult",
     "RunnerStepEvent",
@@ -81,6 +88,7 @@ __all__ = [
     "StoredCredential",
     "StreamChunk",
     "StreamTurnEvent",
+    "TaskBrief",
     "TonePreset",
     "ToolCallRequest",
     "ToolDefinition",
