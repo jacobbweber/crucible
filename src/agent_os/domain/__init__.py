@@ -11,9 +11,11 @@ from agent_os.domain.continuum import ChatSessionState, StreamTurnEvent
 from agent_os.domain.dispatch import DispatchDecision, DispatchResult
 from agent_os.domain.education import (
     EducationTopic,
+    EvaluationResult,
     PedagogicalStage,
     ReviewLog,
     SRSReviewCard,
+    StageTransition,
 )
 from agent_os.domain.gateway import ChatMessage, CompletionRequest, StreamChunk
 from agent_os.domain.ipc import SubJobExecutionRequest, SubJobReturnEnvelope
@@ -74,6 +76,7 @@ __all__ = [
     "DispatchDecision",
     "DispatchResult",
     "EducationTopic",
+    "EvaluationResult",
     "ExecutionModality",
     "FactRecord",
     "FactSearchResult",
@@ -103,6 +106,7 @@ __all__ = [
     "ScheduledRoutine",
     "ScrubbedOutput",
     "SessionRecord",
+    "StageTransition",
     "StoredCredential",
     "StreamChunk",
     "StreamTurnEvent",

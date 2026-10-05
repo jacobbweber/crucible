@@ -54,3 +54,22 @@ class ReviewLog(BaseModel):
     reviewed_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     old_interval: int
     new_interval: int
+
+
+class EvaluationResult(BaseModel):
+    """Result of assessing a learner's response against pedagogical rubrics."""
+
+    grade: int = Field(ge=0, le=5)
+    feedback: str = Field(min_length=1)
+    passed: bool
+    suggested_stage: PedagogicalStage | None = None
+
+
+class StageTransition(BaseModel):
+    """Record of progression evaluation between pedagogical stages."""
+
+    topic_id: str
+    previous_stage: PedagogicalStage
+    new_stage: PedagogicalStage
+    advanced: bool
+    reason: str
