@@ -17,6 +17,7 @@ from agent_os.domain.policy import (
     PolicyDecisionType,
     ToolCallRequest,
 )
+from agent_os.domain.recipe import RecipeMatch, RecipeMetadata, RecipeRecord
 from agent_os.domain.security import (
     CredentialType,
     PublicCredentialMetadata,
@@ -61,6 +62,9 @@ __all__ = [
     "ProtectedFolder",
     "PublicCredentialMetadata",
     "RecalledFactsPayload",
+    "RecipeMatch",
+    "RecipeMetadata",
+    "RecipeRecord",
     "ResolvedParameters",
     "ScrubbedOutput",
     "SessionRecord",
