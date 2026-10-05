@@ -12,12 +12,14 @@ from agent_os.kernel.recipe_chamber import RecipeChamber
 from agent_os.kernel.return_marshaller import SubJobMarshaller
 from agent_os.kernel.runbook_parser import PocockRunbookParser
 from agent_os.kernel.runner import NativeRunner
+from agent_os.kernel.scheduler import EmbeddedSchedulerDaemon
 from agent_os.kernel.tone import get_tone_instructions
 from agent_os.kernel.wiki_tools import WikiToolSuite
 
 __all__ = [
     "CompanionChatLoop",
     "CredentialProxyGate",
+    "EmbeddedSchedulerDaemon",
     "FactPrefetcher",
     "GraduationService",
     "NativeRunner",

@@ -31,6 +31,7 @@ from agent_os.domain.runner import (
     RunnerResult,
     RunnerStepEvent,
 )
+from agent_os.domain.schedule import CatchUpPolicy, RoutineExecutionLog, ScheduledRoutine
 from agent_os.domain.security import (
     CredentialType,
     PublicCredentialMetadata,
@@ -57,6 +58,7 @@ __all__ = [
     "AppConfig",
     "ApprovalMode",
     "AssembledSystemPrompt",
+    "CatchUpPolicy",
     "ChatMessage",
     "ChatSessionState",
     "CompanionConfig",
@@ -83,10 +85,12 @@ __all__ = [
     "RecipeMetadata",
     "RecipeRecord",
     "ResolvedParameters",
+    "RoutineExecutionLog",
     "RunbookDefinition",
     "RunnerExecutionRequest",
     "RunnerResult",
     "RunnerStepEvent",
+    "ScheduledRoutine",
     "ScrubbedOutput",
     "SessionRecord",
     "StoredCredential",
