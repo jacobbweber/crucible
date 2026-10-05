@@ -142,6 +142,16 @@ class SessionRepository:
             for row in rows
         ]
 
+    def count_turns(self, session_id: str) -> int:
+        """Count total conversation turns for a session."""
+        with get_connection(self.db_path) as conn:
+            cursor = conn.execute(
+                "SELECT COUNT(*) AS total FROM turns WHERE session_id = ?;",
+                (session_id,),
+            )
+            row = cursor.fetchone()
+            return int(row["total"]) if row else 0
+
     def record_journey_start(self, session_id: str, task: str) -> JourneyRecord:
         """Initialize and persist a new journey in running status."""
         journey_id = f"jrn_{uuid.uuid4().hex}"

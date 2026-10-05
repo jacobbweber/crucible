@@ -7,6 +7,7 @@ from agent_os.domain.companion import (
     TonePreset,
 )
 from agent_os.domain.config import AppConfig
+from agent_os.domain.continuum import ChatSessionState, StreamTurnEvent
 from agent_os.domain.gateway import ChatMessage, CompletionRequest, StreamChunk
 from agent_os.domain.memory import FactRecord, FactSearchResult
 from agent_os.domain.security import (
@@ -27,6 +28,7 @@ __all__ = [
     "AppConfig",
     "AssembledSystemPrompt",
     "ChatMessage",
+    "ChatSessionState",
     "CompanionConfig",
     "CompletionRequest",
     "CredentialType",
@@ -43,6 +45,7 @@ __all__ = [
     "SessionRecord",
     "StoredCredential",
     "StreamChunk",
+    "StreamTurnEvent",
     "TonePreset",
     "TurnRecord",
 ]
