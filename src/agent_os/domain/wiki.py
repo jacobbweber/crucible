@@ -2,7 +2,6 @@
 
 from datetime import UTC, datetime
 from enum import StrEnum
-from pathlib import Path
 
 from pydantic import BaseModel, Field
 
@@ -29,7 +28,7 @@ class NoteFrontmatter(BaseModel):
 class NoteRecord(BaseModel):
     """Represents a loaded note record."""
 
-    path: Path
+    path: str
     relative_path: str
     frontmatter: NoteFrontmatter
     body: str

@@ -3,6 +3,7 @@
 from agent_os.kernel.chat_loop import CompanionChatLoop
 from agent_os.kernel.credential_proxy import CredentialProxyGate
 from agent_os.kernel.fact_prefetcher import FactPrefetcher
+from agent_os.kernel.graduation import GraduationService
 from agent_os.kernel.policy_gate import ToolPolicyGate
 from agent_os.kernel.prompt_assembler import PromptAssembler
 from agent_os.kernel.tone import get_tone_instructions
@@ -12,6 +13,7 @@ __all__ = [
     "CompanionChatLoop",
     "CredentialProxyGate",
     "FactPrefetcher",
+    "GraduationService",
     "PromptAssembler",
     "ToolPolicyGate",
     "WikiToolSuite",

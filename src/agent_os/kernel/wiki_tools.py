@@ -118,6 +118,15 @@ class WikiToolSuite:
                     ),
                 ],
             ),
+            ToolDefinition(
+                name="wiki_graduate_inbox",
+                description=(
+                    "Deterministically validate frontmatter of all notes in 00_Inbox/ "
+                    "and graduate passing notes into 01_Notes/<category>/"
+                ),
+                action_tier=ActionTier.STATE_CHANGE,
+                parameters=[],
+            ),
         ]
 
     def wiki_read(self, path: str, max_lines: int = 200) -> ToolExecutionResult:
@@ -286,4 +295,29 @@ class WikiToolSuite:
             tool_name="wiki_search",
             success=True,
             output=output,
+        )
+
+    def wiki_graduate_inbox(self) -> ToolExecutionResult:
+        """Validate frontmatter of staged notes in 00_Inbox/ and graduate valid notes."""
+        report = self.store.graduate_inbox()
+        lines: list[str] = [
+            f"Graduated {report.graduated_count} notes, {report.failed_count} failed."
+        ]
+
+        if report.graduated_files:
+            lines.append("\nGraduated Notes:")
+            for filename in report.graduated_files:
+                lines.append(f"- {filename}")
+
+        if report.failures:
+            lines.append("\nFailed Notes:")
+            for failure in report.failures:
+                reasons_str = "; ".join(failure.reasons)
+                lines.append(f"- {failure.filename}: {reasons_str}")
+
+        output_md = "\n".join(lines)
+        return ToolExecutionResult(
+            tool_name="wiki_graduate_inbox",
+            success=True,
+            output=output_md,
         )
