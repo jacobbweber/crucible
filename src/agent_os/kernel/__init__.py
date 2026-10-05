@@ -13,6 +13,7 @@ from agent_os.kernel.return_marshaller import SubJobMarshaller
 from agent_os.kernel.runbook_parser import PocockRunbookParser
 from agent_os.kernel.runner import NativeRunner
 from agent_os.kernel.scheduler import EmbeddedSchedulerDaemon
+from agent_os.kernel.srs_engine import SRSEngine
 from agent_os.kernel.tone import get_tone_instructions
 from agent_os.kernel.wiki_tools import WikiToolSuite
 
@@ -26,6 +27,7 @@ __all__ = [
     "PocockRunbookParser",
     "PromptAssembler",
     "RecipeChamber",
+    "SRSEngine",
     "SubJobMarshaller",
     "TaskBriefAssembler",
     "ToolPolicyGate",

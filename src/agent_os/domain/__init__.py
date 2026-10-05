@@ -9,6 +9,12 @@ from agent_os.domain.companion import (
 from agent_os.domain.config import AppConfig
 from agent_os.domain.continuum import ChatSessionState, StreamTurnEvent
 from agent_os.domain.dispatch import DispatchDecision, DispatchResult
+from agent_os.domain.education import (
+    EducationTopic,
+    PedagogicalStage,
+    ReviewLog,
+    SRSReviewCard,
+)
 from agent_os.domain.gateway import ChatMessage, CompletionRequest, StreamChunk
 from agent_os.domain.ipc import SubJobExecutionRequest, SubJobReturnEnvelope
 from agent_os.domain.memory import FactRecord, FactSearchResult, RecalledFactsPayload
@@ -67,6 +73,7 @@ __all__ = [
     "CredentialType",
     "DispatchDecision",
     "DispatchResult",
+    "EducationTopic",
     "ExecutionModality",
     "FactRecord",
     "FactSearchResult",
@@ -76,6 +83,7 @@ __all__ = [
     "JourneyRecord",
     "NoteFrontmatter",
     "NoteRecord",
+    "PedagogicalStage",
     "PolicyDecision",
     "PolicyDecisionType",
     "ProtectedFolder",
@@ -85,11 +93,13 @@ __all__ = [
     "RecipeMetadata",
     "RecipeRecord",
     "ResolvedParameters",
+    "ReviewLog",
     "RoutineExecutionLog",
     "RunbookDefinition",
     "RunnerExecutionRequest",
     "RunnerResult",
     "RunnerStepEvent",
+    "SRSReviewCard",
     "ScheduledRoutine",
     "ScrubbedOutput",
     "SessionRecord",
