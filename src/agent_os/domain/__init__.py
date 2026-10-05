@@ -48,6 +48,7 @@ from agent_os.domain.security import (
     StoredCredential,
 )
 from agent_os.domain.session import JourneyRecord, SessionRecord, TurnRecord
+from agent_os.domain.signaling import AmbientNudge, DeferredCompletionBuffer
 from agent_os.domain.tools import (
     ToolDefinition,
     ToolExecutionResult,
@@ -63,6 +64,7 @@ from agent_os.domain.wiki import (
 
 __all__ = [
     "ActionTier",
+    "AmbientNudge",
     "AppConfig",
     "ApprovalMode",
     "AssembledSystemPrompt",
@@ -73,6 +75,7 @@ __all__ = [
     "CompiledExecutionPacket",
     "CompletionRequest",
     "CredentialType",
+    "DeferredCompletionBuffer",
     "DispatchDecision",
     "DispatchResult",
     "EducationTopic",
