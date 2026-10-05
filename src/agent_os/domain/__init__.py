@@ -10,6 +10,13 @@ from agent_os.domain.config import AppConfig
 from agent_os.domain.continuum import ChatSessionState, StreamTurnEvent
 from agent_os.domain.gateway import ChatMessage, CompletionRequest, StreamChunk
 from agent_os.domain.memory import FactRecord, FactSearchResult, RecalledFactsPayload
+from agent_os.domain.policy import (
+    ActionTier,
+    ApprovalMode,
+    PolicyDecision,
+    PolicyDecisionType,
+    ToolCallRequest,
+)
 from agent_os.domain.security import (
     CredentialType,
     PublicCredentialMetadata,
@@ -25,7 +32,9 @@ from agent_os.domain.wiki import (
 )
 
 __all__ = [
+    "ActionTier",
     "AppConfig",
+    "ApprovalMode",
     "AssembledSystemPrompt",
     "ChatMessage",
     "ChatSessionState",
@@ -40,6 +49,8 @@ __all__ = [
     "JourneyRecord",
     "NoteFrontmatter",
     "NoteRecord",
+    "PolicyDecision",
+    "PolicyDecisionType",
     "ProtectedFolder",
     "PublicCredentialMetadata",
     "RecalledFactsPayload",
@@ -48,5 +59,6 @@ __all__ = [
     "StreamChunk",
     "StreamTurnEvent",
     "TonePreset",
+    "ToolCallRequest",
     "TurnRecord",
 ]
