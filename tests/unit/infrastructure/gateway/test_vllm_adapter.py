@@ -124,3 +124,96 @@ async def test_vllm_adapter_separates_reasoning_and_sends_thinking_toggle() -> N
     assert captured["reasoning_effort"] == "none"
     assert "".join(c.delta for c in chunks) == "Hi"
     assert "".join(c.reasoning for c in chunks) == "Let me think"
+
+
+@pytest.mark.asyncio
+async def test_vllm_adapter_thinking_level_ladder() -> None:
+    """Verify ThinkingLevel.LOW and NONE are mapped properly into request payload."""
+    captured: dict[str, Any] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.update(json.loads(request.content.decode("utf-8")))
+        return httpx.Response(200, text="data: [DONE]\n\n")
+
+    adapter = VllmAdapter(transport=httpx.MockTransport(handler))
+    
+    from agent_os.domain.gateway import ThinkingLevel
+
+    # Test ThinkingLevel.LOW
+    req_low = CompletionRequest(
+        messages=[ChatMessage(role="user", content="Hi")],
+        thinking_level=ThinkingLevel.LOW,
+    )
+    _ = [c async for c in adapter.complete(req_low)]
+    assert captured["chat_template_kwargs"] == {"enable_thinking": True}
+    assert captured["reasoning_effort"] == "low"
+
+    # Test ThinkingLevel.NONE
+    req_none = CompletionRequest(
+        messages=[ChatMessage(role="user", content="Hi")],
+        thinking_level=ThinkingLevel.NONE,
+    )
+    _ = [c async for c in adapter.complete(req_none)]
+    assert captured["chat_template_kwargs"] == {"enable_thinking": False}
+    assert captured["reasoning_effort"] == "none"
+
+
+@pytest.mark.asyncio
+async def test_vllm_adapter_semaphore_concurrency_gating() -> None:
+    """Verify complete() acquires the shared InferenceSemaphore during execution."""
+    from agent_os.infrastructure.gateway.semaphore import InferenceSemaphore
+
+    semaphore = InferenceSemaphore(max_concurrency=1)
+    entered_sem = False
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        nonlocal entered_sem
+        entered_sem = semaphore.active_workers == 1
+        return httpx.Response(200, text="data: [DONE]\n\n")
+
+    adapter = VllmAdapter(semaphore=semaphore, transport=httpx.MockTransport(handler))
+    req = CompletionRequest(messages=[ChatMessage(role="user", content="Hi")])
+    _ = [c async for c in adapter.complete(req)]
+    assert entered_sem is True
+    assert semaphore.active_workers == 0
+
+
+@pytest.mark.asyncio
+async def test_vllm_adapter_normalizes_tool_message_id() -> None:
+    """Verify tool role messages receive a tool_call_id to satisfy OpenAI endpoints (H3)."""
+    captured: dict[str, Any] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.update(json.loads(request.content.decode("utf-8")))
+        return httpx.Response(200, text="data: [DONE]\n\n")
+
+    adapter = VllmAdapter(transport=httpx.MockTransport(handler))
+    tool_msg = ChatMessage(role="tool", content="obs", name="wiki_read")
+    req = CompletionRequest(messages=[tool_msg])
+    _ = [c async for c in adapter.complete(req)]
+
+    assert captured["messages"][0]["tool_call_id"] == "call_wiki_read"
+
+
+@pytest.mark.asyncio
+async def test_vllm_adapter_reserves_thinking_headroom() -> None:
+    """Verify max_tokens expands to at least 1024 when thinking is active (G1)."""
+    captured: dict[str, Any] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.update(json.loads(request.content.decode("utf-8")))
+        return httpx.Response(200, text="data: [DONE]\n\n")
+
+    from agent_os.domain.gateway import ThinkingLevel
+
+    adapter = VllmAdapter(
+        config=AppConfig(vllm_context_window=4096),
+        transport=httpx.MockTransport(handler),
+    )
+    req = CompletionRequest(
+        messages=[ChatMessage(role="user", content="Hi")],
+        thinking_level=ThinkingLevel.HIGH,
+        max_tokens=64,  # Intentionally small
+    )
+    _ = [c async for c in adapter.complete(req)]
+    assert captured["max_tokens"] == 1024

@@ -1,11 +1,12 @@
 """Master orchestration kernel coordinating all agent-os runtime subsystems."""
 
 import inspect
-from collections.abc import Callable, Coroutine
+from collections.abc import AsyncIterator, Callable, Coroutine
 from datetime import UTC, datetime
 from typing import Any
 
 from agent_os.domain.companion import CompanionConfig
+from agent_os.domain.continuum import StreamTurnEvent
 from agent_os.domain.dispatch import DispatchResult
 from agent_os.domain.kernel import KernelConfig, TurnResponse, UserTurnRequest
 from agent_os.domain.pipeline import JobAssemblyRequest, PipelineExecutionResult
@@ -95,6 +96,7 @@ class AgentOSKernel:
         vault_repo: CredentialVaultRepository,
         wiki_store: WikiStore,
         model_adapter: BaseModelAdapter,
+        semaphore: InferenceSemaphore | None = None,
     ) -> None:
         self.config = config
         self.session_repo = session_repo
@@ -106,7 +108,7 @@ class AgentOSKernel:
         self.model_adapter = model_adapter
 
         # Core subsystems
-        self.semaphore = InferenceSemaphore(max_concurrency=config.max_concurrency)
+        self.semaphore = semaphore or InferenceSemaphore(max_concurrency=config.max_concurrency)
         self.policy_gate = ToolPolicyGate(approval_mode=ApprovalMode(config.approval_mode))
         self.credential_proxy = CredentialProxyGate(vault_repo=vault_repo)
         self.wiki_tools = WikiToolSuite(wiki_store=wiki_store)
@@ -257,32 +259,33 @@ class AgentOSKernel:
         invoker = self.tool_dispatcher[tool_name]
         return await invoker(**params)
 
-    async def handle_user_turn(self, request: UserTurnRequest) -> TurnResponse:
-        """Handle an interactive user turn with prefetching, background drain, and streaming."""
-        # 1. Pre-fetch facts
+    async def stream_user_turn(
+        self, request: UserTurnRequest
+    ) -> AsyncIterator[StreamTurnEvent]:
+        """Stream an interactive user turn progressively (K1)."""
         facts_payload = self.fact_prefetcher.prefetch_for_turn(request.user_input)
-
-        # 2. Drain background completions
         deferred_block = self.signaler.format_deferred_prompt_block(request.session_id)
-
-        # 3. Companion chat loop with combined prompt facts hook
         chat_loop = CompanionChatLoop(
             session_id=request.session_id,
             session_repo=self.session_repo,
             model_adapter=self.model_adapter,
             config=CompanionConfig(name=self.config.companion_name),
         )
-
-        # 4. Stream and accumulate events
-        events = []
-        response_parts: list[str] = []
-        final_turn_content = ""
-
         async for event in chat_loop.execute_turn(
             user_input=request.user_input,
             recalled_facts_block=facts_payload.rendered_block,
             background_completions_block=deferred_block,
         ):
+            yield event
+
+    async def handle_user_turn(self, request: UserTurnRequest) -> TurnResponse:
+        """Handle an interactive user turn with prefetching, background drain, and streaming."""
+        facts_payload = self.fact_prefetcher.prefetch_for_turn(request.user_input)
+        events: list[StreamTurnEvent] = []
+        response_parts: list[str] = []
+        final_turn_content = ""
+
+        async for event in self.stream_user_turn(request):
             events.append(event)
             if event.event_type == "delta":
                 response_parts.append(event.delta)
@@ -290,11 +293,8 @@ class AgentOSKernel:
                 final_turn_content = event.turn.content
 
         response_text = "".join(response_parts) or final_turn_content
-
-        # 5. Poll any newly generated ambient nudges
         nudges = self.signaler.poll_ambient_nudges()
 
-        # 6. Return TurnResponse
         return TurnResponse(
             session_id=request.session_id,
             response_text=response_text,

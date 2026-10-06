@@ -91,12 +91,19 @@ class CompanionChatLoop:
 
             accumulated_text_parts: list[str] = []
             async for chunk in self.model_adapter.complete(request):
-                accumulated_text_parts.append(chunk.delta)
-                yield StreamTurnEvent(
-                    event_type="delta",
-                    delta=chunk.delta,
-                    finish_reason=chunk.finish_reason,
-                )
+                if chunk.reasoning:
+                    yield StreamTurnEvent(
+                        event_type="thinking",
+                        reasoning=chunk.reasoning,
+                        finish_reason=chunk.finish_reason,
+                    )
+                if chunk.delta:
+                    accumulated_text_parts.append(chunk.delta)
+                    yield StreamTurnEvent(
+                        event_type="delta",
+                        delta=chunk.delta,
+                        finish_reason=chunk.finish_reason,
+                    )
 
             accumulated_text = "".join(accumulated_text_parts)
             assistant_turn = self.session_repo.append_turn(

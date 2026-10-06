@@ -25,15 +25,24 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
 
 
 async def _chat_turn(ctx: ReplContext, text: str) -> None:
-    resp = await ctx.kernel.handle_user_turn(
-        UserTurnRequest(session_id=ctx.session_id, user_input=text)
-    )
-    for event in resp.stream_events:
-        if event.event_type == "error":
-            ctx.console.error(f"turn error: {event.error_message}")
-    ctx.console.dim(f"(recalled_facts={resp.recalled_facts_count})")
-    ctx.console.write(resp.response_text or "(empty response)", "bold")
-    for nudge in resp.ambient_nudges:
+    req = UserTurnRequest(session_id=ctx.session_id, user_input=text)
+    response_chunks: list[str] = []
+    is_tracing = ctx.runtime.tracer.enabled
+    async for event in ctx.kernel.stream_user_turn(req):
+        if event.event_type == "delta":
+            if not is_tracing:
+                sys.stdout.write(event.delta)
+                sys.stdout.flush()
+            response_chunks.append(event.delta)
+        elif event.event_type == "error":
+            ctx.console.error(f"\nturn error: {event.error_message}")
+    if response_chunks:
+        if not is_tracing:
+            sys.stdout.write("\n")
+            sys.stdout.flush()
+    else:
+        ctx.console.write("(empty response)", "dim")
+    for nudge in ctx.kernel.signaler.poll_ambient_nudges():
         ctx.console.warn(f"🔔 {nudge.short_notice}")
 
 

@@ -10,8 +10,9 @@ from agent_os.domain.session import TurnRecord
 class StreamTurnEvent(BaseModel):
     """Event emitted during interactive streaming turn execution."""
 
-    event_type: Literal["delta", "completed", "error"]
+    event_type: Literal["delta", "completed", "error", "thinking"]
     delta: str = ""
+    reasoning: str = ""
     finish_reason: str | None = None
     turn: TurnRecord | None = None
     error_message: str | None = None

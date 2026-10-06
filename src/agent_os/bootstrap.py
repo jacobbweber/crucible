@@ -7,6 +7,7 @@ from agent_os.domain.config import AppConfig
 from agent_os.domain.kernel import KernelConfig
 from agent_os.infrastructure.config import resolve_data_dir
 from agent_os.infrastructure.gateway.base import BaseModelAdapter
+from agent_os.infrastructure.gateway.semaphore import InferenceSemaphore
 from agent_os.infrastructure.gateway.tracing import TraceSink, TracingModelAdapter
 from agent_os.infrastructure.gateway.vllm import VllmAdapter
 from agent_os.infrastructure.security.key_provider import load_or_create_master_key
@@ -43,14 +44,18 @@ def build_runtime(
     """Resolve storage, provision key material, and assemble the kernel and subsystems."""
     cfg = app_config or AppConfig()
     root = resolve_data_dir(data_dir if data_dir is not None else cfg.data_dir)
+    k_cfg = kernel_config or KernelConfig(storage_root=str(root))
+    semaphore = InferenceSemaphore(max_concurrency=k_cfg.max_concurrency)
+
     wiki_store = WikiStore(root / "wiki_vault")
     wiki_store.init_vault()
 
-    tracer = TracingModelAdapter(adapter or VllmAdapter(cfg), sink=trace_sink or _null_sink)
+    base_adapter = adapter or VllmAdapter(cfg, semaphore=semaphore)
+    tracer = TracingModelAdapter(base_adapter, sink=trace_sink or _null_sink)
     master_key = load_or_create_master_key(root, cfg.vault_passphrase)
 
     kernel = AgentOSKernel(
-        config=kernel_config or KernelConfig(storage_root=str(root)),
+        config=k_cfg,
         session_repo=SessionRepository(root / "session_store.db"),
         facts_repo=FactRepository(root / "memory_facts.db"),
         recipe_repo=RecipeRepository(root / "recipes.db"),
@@ -58,5 +63,6 @@ def build_runtime(
         vault_repo=CredentialVaultRepository(root / "vault.db", master_key=master_key),
         wiki_store=wiki_store,
         model_adapter=tracer,
+        semaphore=semaphore,
     )
     return Runtime(kernel=kernel, app_config=cfg, data_dir=root, tracer=tracer)

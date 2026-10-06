@@ -27,6 +27,15 @@ class Console:
     def __init__(self) -> None:
         if os.name == "nt":
             os.system("")  # enables VT escape processing on legacy Windows consoles
+        try:
+            reconfig_out = getattr(sys.stdout, "reconfigure", None)
+            if callable(reconfig_out):
+                reconfig_out(encoding="utf-8", errors="replace")
+            reconfig_err = getattr(sys.stderr, "reconfigure", None)
+            if callable(reconfig_err):
+                reconfig_err(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
 
     def write(self, text: str, style: str | None = None, end: str = "\n") -> None:
         prefix = _CODES.get(style or "", "")

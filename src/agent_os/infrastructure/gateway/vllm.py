@@ -2,46 +2,97 @@
 
 import json
 from collections.abc import AsyncIterator
+from typing import Any
 
 import httpx
 
 from agent_os.domain.config import AppConfig
-from agent_os.domain.gateway import CompletionRequest, StreamChunk
+from agent_os.domain.gateway import CompletionRequest, StreamChunk, ThinkingLevel
 from agent_os.infrastructure.gateway.base import BaseModelAdapter
+from agent_os.infrastructure.gateway.semaphore import InferenceSemaphore
 
 
 class VllmAdapter(BaseModelAdapter):
-    """vLLM streaming model adapter using HTTP/SSE."""
+    """vLLM and OpenAI-compatible streaming model adapter using HTTP/SSE."""
 
     def __init__(
         self,
         config: AppConfig | None = None,
         transport: httpx.AsyncBaseTransport | None = None,
+        semaphore: InferenceSemaphore | None = None,
     ) -> None:
         self.config = config or AppConfig()
         self.transport = transport
+        self.semaphore = semaphore
 
     async def complete(
         self,
         request: CompletionRequest,
     ) -> AsyncIterator[StreamChunk]:
-        """Stream completion tokens from the vLLM /chat/completions endpoint."""
+        """Stream completion tokens from the model endpoint."""
+        if self.semaphore:
+            async with self.semaphore.acquire():
+                async for chunk in self._stream_request(request):
+                    yield chunk
+        else:
+            async for chunk in self._stream_request(request):
+                yield chunk
+
+    async def _stream_request(
+        self,
+        request: CompletionRequest,
+    ) -> AsyncIterator[StreamChunk]:
         url = f"{self.config.vllm_base_url.rstrip('/')}/chat/completions"
         clamped_max_tokens = min(request.max_tokens, self.config.vllm_context_window)
 
-        payload: dict[str, object] = {
+        # G1 headroom: ensure output headroom when reasoning is enabled
+        is_thinking = (
+            request.thinking_level
+            in (ThinkingLevel.LOW, ThinkingLevel.MEDIUM, ThinkingLevel.HIGH, ThinkingLevel.MAX)
+            or (request.thinking_level is None and bool(self.config.vllm_enable_thinking))
+        )
+        if is_thinking and clamped_max_tokens < 1024:
+            clamped_max_tokens = min(1024, self.config.vllm_context_window)
+
+        # Format messages and resolve H3 (tool messages require tool_call_id)
+        formatted_messages: list[dict[str, Any]] = []
+        for msg in request.messages:
+            item: dict[str, Any] = {"role": msg.role, "content": msg.text}
+            if msg.name:
+                item["name"] = msg.name
+            if msg.tool_call_id:
+                item["tool_call_id"] = msg.tool_call_id
+            elif msg.role == "tool":
+                item["tool_call_id"] = f"call_{msg.name or 'default'}"
+            formatted_messages.append(item)
+
+        payload: dict[str, Any] = {
             "model": request.model or self.config.vllm_model_name,
-            "messages": [msg.model_dump(exclude_none=True) for msg in request.messages],
+            "messages": formatted_messages,
             "temperature": request.temperature,
             "max_tokens": clamped_max_tokens,
             "stream": True,
         }
-        thinking = self.config.vllm_enable_thinking
-        if thinking is not None:
-            # vLLM chat templates read chat_template_kwargs; Ollama only honours reasoning_effort.
-            payload["chat_template_kwargs"] = {"enable_thinking": thinking}
-            if not thinking:
+
+        # Apply normalized thinking ladder
+        level = request.thinking_level
+        if level == ThinkingLevel.NONE:
+            payload["chat_template_kwargs"] = {"enable_thinking": False}
+            payload["reasoning_effort"] = "none"
+        elif level is not None:
+            effort_map: dict[ThinkingLevel, str] = {
+                ThinkingLevel.LOW: "low",
+                ThinkingLevel.MEDIUM: "medium",
+                ThinkingLevel.HIGH: "high",
+                ThinkingLevel.MAX: "high",
+            }
+            payload["chat_template_kwargs"] = {"enable_thinking": True}
+            payload["reasoning_effort"] = effort_map.get(level, "high")
+        elif self.config.vllm_enable_thinking is not None:
+            payload["chat_template_kwargs"] = {"enable_thinking": self.config.vllm_enable_thinking}
+            if not self.config.vllm_enable_thinking:
                 payload["reasoning_effort"] = "none"
+
         headers = {
             "Authorization": f"Bearer {self.config.vllm_api_key}",
             "Content-Type": "application/json",
@@ -62,7 +113,7 @@ class VllmAdapter(BaseModelAdapter):
                         body = await response.aread()
                         error_text = body.decode(errors="replace")
                         raise RuntimeError(
-                            f"vLLM API returned HTTP {response.status_code}: {error_text}"
+                            f"Model API returned HTTP {response.status_code}: {error_text}"
                         )
 
                     async for line in response.aiter_lines():
@@ -100,6 +151,6 @@ class VllmAdapter(BaseModelAdapter):
                                 reasoning=reasoning,
                             )
         except httpx.TimeoutException as exc:
-            raise RuntimeError(f"vLLM request timed out: {exc}") from exc
+            raise RuntimeError(f"Model request timed out: {exc}") from exc
         except httpx.RequestError as exc:
-            raise RuntimeError(f"vLLM request failed: {exc}") from exc
+            raise RuntimeError(f"Model request failed: {exc}") from exc
