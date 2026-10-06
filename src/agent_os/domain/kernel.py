@@ -12,7 +12,7 @@ from agent_os.domain.signaling import AmbientNudge
 class KernelConfig(BaseModel):
     """Runtime configuration parameters for the AgentOS master kernel."""
 
-    storage_root: str
+    storage_root: str = ""
     companion_name: str = "Companion"
     max_concurrency: int = 1
     approval_mode: str = "balanced"

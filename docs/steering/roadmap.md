@@ -54,15 +54,15 @@ Severity: 🔴 Critical · 🟠 High · 🟡 Medium · ⚪ Low
 | **M1** | 🟡 | Layering | Raw SQL executed from kernel signaling dispatcher. | ✅ Fixed (Phase 5) |
 | **M2** | 🟡 | Chat | Foreign key violations on unknown session swallowed silently. | ✅ Fixed (Phase 5) |
 | **M3** | 🟡 | Education | Education datetime parsing and pedagogical advancement unwired. | ✅ Fixed (Phase 9) |
-| **M4** | 🟡 | Code Quality | Duplicate attribute aliases throughout codebase. | ⚪ Open |
+| **M4** | 🟡 | Code Quality | Duplicate attribute aliases throughout codebase. | ✅ Fixed |
 | **M5** | 🟡 | Context | Token counting hardcoded to `len // 4` without model budget limits. | ✅ Fixed (Phase 5) |
 | **M6** | 🟡 | Runner | Execution timeouts passed but not enforced. | ✅ Fixed (Phase 6) |
 | **M7** | 🟡 | Config | `AGENT_OS_DATA_DIR` mismatch in `.env.example`. | ✅ Fixed (Phase 0) |
-| **M8** | 🟡 | Clean Code | Multiple files exceeding 300-line modularity threshold. | ⚪ Open |
+| **M8** | 🟡 | Clean Code | Multiple files exceeding 300-line modularity threshold. | ✅ Fixed |
 | **L1** | ⚪ | Wiki | Linear file search in wiki store; wiki_read calls private _resolve_safe_path. | ✅ Addressed (Phase 3) |
-| **L2** | ⚪ | Docs | Missing operational and architecture documentation. | 🟨 In Progress |
+| **L2** | ⚪ | Docs | Missing operational and architecture documentation. | ✅ Complete |
 | **G1** | 🟠 | Gateway | Reasoning models exhaust reply budget if `max_tokens` is constrained. | ✅ Fixed (Phase 0/1) |
 | **G2** | 🟠 | Gateway | Disparate thinking toggle syntax across vLLM and Ollama. | ✅ Fixed (Phase 0/1) |
 | **G3** | 🟡 | Gateway | Thinking length varies ~15x between model architectures. | ✅ Addressed (Phase 1) |
 | **K1** | 🟡 | Kernel | User turn execution buffers entire stream instead of progressive yielding. | ✅ Fixed (Phase 1) |
-| **K2** | ⚪ | Config | Vestigial `KernelConfig.storage_root` required but unused. | ⚪ Open |
+| **K2** | ⚪ | Config | Vestigial `KernelConfig.storage_root` required but unused. | ✅ Fixed |
