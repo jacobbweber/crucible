@@ -1,0 +1,4 @@
+/tools
+/job list notes in category engineering
+/signals nudges
+/quit

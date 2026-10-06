@@ -91,6 +91,7 @@ class ZeroCatalogDispatcher:
         session_id: str,
         task: str,
         available_tools: list[str] | None,
+        timeout_seconds: int = 300,
     ) -> DispatchResult:
         """Stage 2: Assemble ephemeral task brief using model adapter and execute sub-job."""
         tools_list = available_tools or []
@@ -139,6 +140,7 @@ class ZeroCatalogDispatcher:
                 session_id=session_id,
                 task=task,
                 packet=packet,
+                timeout_seconds=timeout_seconds,
             )
         )
 
@@ -156,41 +158,53 @@ class ZeroCatalogDispatcher:
         session_id: str,
         task: str,
         available_tools: list[str] | None = None,
+        timeout_seconds: int = 300,
     ) -> DispatchResult:
         """Dispatch task via Stage 1 (catalog recipe) or Stage 2 (ephemeral assembly)."""
         matches = self.recipe_repo.match_intent(task, limit=1)
 
-        # Stage 1: Match Intent via SQLite FTS5 Index
+        # Stage 1: Match Intent via SQLite FTS5 Index if tools are available
         if matches and matches[0].score >= self.threshold:
             top_match = matches[0]
             recipe = top_match.recipe
-            packet = CompiledExecutionPacket(
-                system_prompt=recipe.body,
-                target_tools=recipe.metadata.required_tools,
-                token_estimate=estimate_tokens(recipe.body),
-                modality=recipe.metadata.execution_engine,
-            )
-            envelope = await self.chamber.execute_sub_job(
-                SubJobExecutionRequest(
-                    session_id=session_id,
-                    task=task,
-                    packet=packet,
-                    timeout_seconds=recipe.metadata.timeout_seconds,
-                )
-            )
-            return DispatchResult(
-                decision=DispatchDecision(
-                    task=task,
-                    stage="matched_recipe",
-                    matched_recipe_id=recipe.metadata.recipe_id,
-                    confidence_score=top_match.score,
-                ),
-                envelope=envelope,
-            )
 
-        # Stage 2: Dynamic Ephemeral Assembly
+            # Verify that required tools for the matched recipe are actually present
+            allowed_tools = set(available_tools) if available_tools is not None else None
+            missing_tools = [
+                t
+                for t in recipe.metadata.required_tools
+                if allowed_tools is not None and t not in allowed_tools
+            ]
+
+            if not missing_tools:
+                packet = CompiledExecutionPacket(
+                    system_prompt=recipe.body,
+                    target_tools=recipe.metadata.required_tools,
+                    token_estimate=estimate_tokens(recipe.body),
+                    modality=recipe.metadata.execution_engine,
+                )
+                envelope = await self.chamber.execute_sub_job(
+                    SubJobExecutionRequest(
+                        session_id=session_id,
+                        task=task,
+                        packet=packet,
+                        timeout_seconds=recipe.metadata.timeout_seconds,
+                    )
+                )
+                return DispatchResult(
+                    decision=DispatchDecision(
+                        task=task,
+                        stage="matched_recipe",
+                        matched_recipe_id=recipe.metadata.recipe_id,
+                        confidence_score=top_match.score,
+                    ),
+                    envelope=envelope,
+                )
+
+        # Stage 2: Dynamic Ephemeral Assembly (unmatched recipe or capability gap)
         return await self._execute_ephemeral_stage(
             session_id=session_id,
             task=task,
             available_tools=available_tools,
+            timeout_seconds=timeout_seconds,
         )

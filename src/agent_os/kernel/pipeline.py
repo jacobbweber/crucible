@@ -5,6 +5,7 @@ from agent_os.domain.pipeline import (
     JobAssemblyRequest,
     PipelineExecutionResult,
 )
+from agent_os.domain.recipe import RecipeMetadata, RecipeRecord
 from agent_os.infrastructure.storage.recipe_repo import RecipeRepository
 from agent_os.kernel.dispatcher import ZeroCatalogDispatcher
 from agent_os.kernel.signaling import CompletionSignaler
@@ -69,6 +70,7 @@ class JobAssemblyPipeline:
             request.session_id,
             request.task,
             available_tools=request.available_tools,
+            timeout_seconds=request.timeout_seconds,
         )
 
         # 3. Channel Signaling
@@ -88,3 +90,32 @@ class JobAssemblyPipeline:
             gap_report=gap_report,
             flagged_for_graduation=flagged_for_graduation,
         )
+
+    def graduate_ephemeral_job(
+        self,
+        result: PipelineExecutionResult,
+        recipe_id: str,
+        name: str,
+        description: str,
+        tags: list[str] | None = None,
+    ) -> RecipeRecord:
+        """Promote a successful ephemeral job into a persistent catalog recipe (ADR-014)."""
+        if not result.flagged_for_graduation:
+            raise ValueError("Pipeline result is not eligible for graduation")
+
+        tags_list = tags or ["graduated", "ephemeral"]
+        record = RecipeRecord(
+            metadata=RecipeMetadata(
+                recipe_id=recipe_id,
+                name=name,
+                description=description,
+                execution_engine="react",
+                target_model_tier="reasoning",
+                tags=tags_list,
+                required_tools=result.dispatch_result.decision.ephemeral_tools,
+                timeout_seconds=300,
+            ),
+            markdown_path=f"recipes/{recipe_id}.md",
+            body=result.dispatch_result.envelope.summary,
+        )
+        return self.recipe_repo.upsert_recipe(record)

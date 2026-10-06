@@ -214,3 +214,125 @@ async def test_dispatch_context_isolation(tmp_path: Path) -> None:
     journey = session_repo.get_journey(result.envelope.journey_id)
     assert journey is not None
     assert journey.session_id == session.session_id
+
+
+@pytest.mark.asyncio
+async def test_dispatch_fallback_on_missing_tools(tmp_path: Path) -> None:
+    """When a recipe matches but its required tool is missing, fall back to ephemeral assembly."""
+    recipe_repo = RecipeRepository(tmp_path / "recipes.db")
+    session_repo = SessionRepository(tmp_path / "session_store.db")
+    session = session_repo.create_session("Missing Tool Session")
+
+    recipe_record = RecipeRecord(
+        metadata=RecipeMetadata(
+            recipe_id="recipe_db_backup",
+            name="Database Backup Routine",
+            description="Perform full database backup to S3 bucket",
+            execution_engine="direct",
+            target_model_tier="reasoning",
+            tags=["backup", "database", "s3"],
+            required_tools=["s3_uploader"],
+            timeout_seconds=300,
+        ),
+        markdown_path="recipes/backup.md",
+        body="Execute full S3 backup.",
+    )
+    recipe_repo.upsert_recipe(recipe_record)
+
+    # Ephemeral planner response selecting alternative tool
+    brief_json = json.dumps(
+        {
+            "role_anchor": "Storage Worker",
+            "core_directive": "Backup database to local disk",
+            "scope_invariants": ["Strict local storage"],
+            "capability_strategy": "Use local_saver",
+            "completion_standard": "Local backup created",
+            "selected_tools": ["local_saver"],
+        }
+    )
+    runner_output = "Database backup saved locally."
+    adapter = MockModelAdapter(responses=[brief_json, runner_output])
+
+    runner = NativeRunner(
+        model_adapter=adapter,
+        policy_gate=ToolPolicyGate(ApprovalMode.BALANCED),
+        tool_dispatcher={},
+    )
+    chamber = RecipeChamber(runner=runner, session_repo=session_repo)
+    dispatcher = ZeroCatalogDispatcher(
+        recipe_repo=recipe_repo,
+        recipe_chamber=chamber,
+        model_adapter=adapter,
+    )
+
+    # Dispatch with only local_saver available (s3_uploader is missing!)
+    result = await dispatcher.dispatch_task(
+        session_id=session.session_id,
+        task="perform database backup",
+        available_tools=["local_saver"],
+    )
+
+    # Must fall through to Stage 2 instead of executing the broken recipe!
+    assert result.decision.stage == "assembled_ephemeral"
+    assert "local_saver" in result.decision.ephemeral_tools
+    assert result.envelope.status == "completed"
+
+
+@pytest.mark.asyncio
+async def test_dispatch_near_miss_falls_through_to_stage2(tmp_path: Path) -> None:
+    """When a task matches below threshold (near-miss), fall through to Stage 2."""
+    recipe_repo = RecipeRepository(tmp_path / "recipes.db")
+    session_repo = SessionRepository(tmp_path / "session_store.db")
+    session = session_repo.create_session("Near Miss Session")
+
+    recipe_record = RecipeRecord(
+        metadata=RecipeMetadata(
+            recipe_id="recipe_kubernetes",
+            name="Kubernetes Rolling Restart",
+            description="Restart production cluster workloads with zero downtime",
+            execution_engine="direct",
+            target_model_tier="reasoning",
+            tags=["k8s", "restart", "cluster"],
+            required_tools=["k8s_restart"],
+            timeout_seconds=300,
+        ),
+        markdown_path="recipes/k8s.md",
+        body="Execute rolling restart.",
+    )
+    recipe_repo.upsert_recipe(recipe_record)
+
+    brief_json = json.dumps(
+        {
+            "role_anchor": "Cluster Worker",
+            "core_directive": "Inspect cluster metrics",
+            "scope_invariants": ["Read only"],
+            "capability_strategy": "Check metrics",
+            "completion_standard": "Metrics collected",
+            "selected_tools": [],
+        }
+    )
+    runner_output = "Cluster metrics inspected."
+    adapter = MockModelAdapter(responses=[brief_json, runner_output])
+
+    runner = NativeRunner(
+        model_adapter=adapter,
+        policy_gate=ToolPolicyGate(ApprovalMode.BALANCED),
+        tool_dispatcher={},
+    )
+    chamber = RecipeChamber(runner=runner, session_repo=session_repo)
+    # High threshold (e.g. 5000000.0) so near-miss fails threshold check
+    dispatcher = ZeroCatalogDispatcher(
+        recipe_repo=recipe_repo,
+        recipe_chamber=chamber,
+        model_adapter=adapter,
+        match_threshold=5000000.0,
+    )
+
+    result = await dispatcher.dispatch_task(
+        session_id=session.session_id,
+        task="check restart status",
+        available_tools=[],
+    )
+
+    assert result.decision.stage == "assembled_ephemeral"
+    assert result.envelope.status == "completed"

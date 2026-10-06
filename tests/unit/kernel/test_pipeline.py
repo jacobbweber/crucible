@@ -249,3 +249,126 @@ def test_pipeline_capability_gap_triage(tmp_path: Path) -> None:
     assert report_c.has_gap is True
     assert report_c.missing_capabilities == []
     assert report_c.resolution_strategy == "ephemeral_synthesis"
+
+
+@pytest.mark.asyncio
+async def test_pipeline_graduate_ephemeral_job(tmp_path: Path) -> None:
+    """Verify an eligible ephemeral job graduates into recipe_repo and matches future queries."""
+    recipe_repo = RecipeRepository(tmp_path / "recipes.db")
+    session_repo = SessionRepository(tmp_path / "session_store.db")
+    session = session_repo.create_session("Graduation Session")
+
+    brief_json = json.dumps(
+        {
+            "role_anchor": "Audio Specialist",
+            "core_directive": "Extract and transcribe audio",
+            "scope_invariants": [],
+            "capability_strategy": "Direct transcription",
+            "completion_standard": "Done",
+            "selected_tools": ["audio_transcriber"],
+        }
+    )
+    adapter = MockModelAdapter(responses=[brief_json, "Transcribed output"])
+
+    async def mock_tool() -> ToolExecutionResult:
+        return ToolExecutionResult(tool_name="audio_transcriber", success=True, output="OK")
+
+    runner = NativeRunner(
+        model_adapter=adapter,
+        policy_gate=ToolPolicyGate(ApprovalMode.BALANCED),
+        tool_dispatcher={"audio_transcriber": mock_tool},
+    )
+    chamber = RecipeChamber(runner=runner, session_repo=session_repo)
+    dispatcher = ZeroCatalogDispatcher(
+        recipe_repo=recipe_repo,
+        recipe_chamber=chamber,
+        model_adapter=adapter,
+    )
+    signaler = CompletionSignaler()
+    pipeline = JobAssemblyPipeline(
+        dispatcher=dispatcher,
+        signaler=signaler,
+        recipe_repo=recipe_repo,
+    )
+
+    req = JobAssemblyRequest(
+        session_id=session.session_id,
+        task="transcribe meeting audio file",
+        available_tools=["audio_transcriber"],
+    )
+    result = await pipeline.run_pipeline(req)
+    assert result.flagged_for_graduation is True
+
+    # Graduate the job
+    record = pipeline.graduate_ephemeral_job(
+        result=result,
+        recipe_id="recipe_transcribe_001",
+        name="Audio Transcriber",
+        description="Extract and transcribe meeting audio files",
+    )
+    assert record.metadata.recipe_id == "recipe_transcribe_001"
+    assert "audio_transcriber" in record.metadata.required_tools
+
+    # Query recipe repo to verify graduation persisted and is index-searchable
+    matches = recipe_repo.match_intent("transcribe meeting audio")
+    assert len(matches) >= 1
+    assert matches[0].recipe.metadata.recipe_id == "recipe_transcribe_001"
+
+
+@pytest.mark.asyncio
+async def test_pipeline_graduate_ineligible_rejection(tmp_path: Path) -> None:
+    """Verify attempting to graduate an ineligible or matched job raises ValueError."""
+    recipe_repo = RecipeRepository(tmp_path / "recipes.db")
+    session_repo = SessionRepository(tmp_path / "session_store.db")
+    session = session_repo.create_session("Ineligible Session")
+
+    existing_record = RecipeRecord(
+        metadata=RecipeMetadata(
+            recipe_id="recipe_existing",
+            name="Existing Task",
+            description="Perform existing task",
+            execution_engine="direct",
+            target_model_tier="reasoning",
+            tags=["task"],
+            required_tools=[],
+            timeout_seconds=60,
+        ),
+        markdown_path="recipes/existing.md",
+        body="Body",
+    )
+    recipe_repo.upsert_recipe(existing_record)
+
+    adapter = MockModelAdapter(responses=["Done"])
+    runner = NativeRunner(
+        model_adapter=adapter,
+        policy_gate=ToolPolicyGate(ApprovalMode.BALANCED),
+        tool_dispatcher={},
+    )
+    chamber = RecipeChamber(runner=runner, session_repo=session_repo)
+    dispatcher = ZeroCatalogDispatcher(
+        recipe_repo=recipe_repo,
+        recipe_chamber=chamber,
+        model_adapter=adapter,
+    )
+    pipeline = JobAssemblyPipeline(
+        dispatcher=dispatcher,
+        signaler=CompletionSignaler(),
+        recipe_repo=recipe_repo,
+    )
+
+    req = JobAssemblyRequest(
+        session_id=session.session_id,
+        task="perform existing task",
+        available_tools=[],
+    )
+    result = await pipeline.run_pipeline(req)
+    assert result.flagged_for_graduation is False
+
+    with pytest.raises(ValueError, match="not eligible for graduation"):
+        pipeline.graduate_ephemeral_job(
+            result=result,
+            recipe_id="recipe_should_fail",
+            name="Fail",
+            description="Fail",
+        )
+
