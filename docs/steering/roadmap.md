@@ -22,7 +22,7 @@ Per `.agents/rules/live-testing.md`, every live test and smoke verification must
 | 0 | **Test Bench & Wiring** | Composition root, dev REPL, tracing | Bootstrap runtime, multi-target probe, streaming with reasoning capture | C1, M7, G1, G2 | ✅ Complete |
 | 1 | **Gateway & Model Routing** | Model I/O, streaming, canonical message parts | Stream completion, token budgeting, concurrency semaphore, timeout handling | H3, H7, M5, G3, K1 | ✅ Complete |
 | 2 | **Storage & Ground Truth** | 5 SQLite DBs, WAL, FTS5 | Inspect schemas, atomic fact search ranking, recipe match lexical ranking | H1 | ✅ Complete |
-| 3 | **Wiki Vault & Graduation** | 4-folder vault, graduation pipeline | Ingestion, path-traversal rejection, safe collision resolution on graduation | H8, L1 | ⚪ Pending |
+| 3 | **Wiki Vault & Graduation** | 4-folder vault, graduation pipeline | Ingestion, path-traversal rejection, safe collision resolution on graduation | H8, L1 | ✅ Complete |
 | 4 | **Security & Policy Gate** | Hardware-keyed vault, credential proxy, policy gate | Secret storage, `vault://` symbolic alias scrubbing, strict/balanced modes | H4, C3 | ⚪ Pending |
 | 5 | **Front Door & Memory** | Prompt assembly, fact recall, chat memory | Multi-turn chat with active trace, fact recall, sliding window past 15 turns | M2, M5 | ⚪ Pending |
 | 6 | **Worker Runtime** | Recipe chamber, runner modalities, journeys | ReAct runner with live model calling wiki tools, cycle detection, brief schema | **C2**, H2, M6 | ⚪ Pending |
@@ -50,7 +50,7 @@ Severity: 🔴 Critical · 🟠 High · 🟡 Medium · ⚪ Low
 | **H5** | 🟠 | Isolation | Global nudge queue leaks results across sessions. | ⚪ Open (Phase 8) |
 | **H6** | 🟠 | Scheduler | In-memory routines lose state on restart; catch-up logic unwired. | ⚪ Open (Phase 8) |
 | **H7** | 🟠 | Concurrency | Inference semaphore only guards scheduler, bypassing chat & manual jobs. | ✅ Fixed (Phase 1) |
-| **H8** | 🟠 | Wiki | Inbox note graduation silently overwrites same-named files. | ⚪ Open (Phase 3) |
+| **H8** | 🟠 | Wiki | Inbox note graduation silently overwrites same-named files. | ✅ Fixed (Phase 3) |
 | **M1** | 🟡 | Layering | Raw SQL executed from kernel signaling dispatcher. | ⚪ Open (Phase 8) |
 | **M2** | 🟡 | Chat | Foreign key violations on unknown session swallowed silently. | ⚪ Open (Phase 5) |
 | **M3** | 🟡 | Education | Education datetime parsing and pedagogical advancement unwired. | ⚪ Open (Phase 9) |
@@ -59,7 +59,7 @@ Severity: 🔴 Critical · 🟠 High · 🟡 Medium · ⚪ Low
 | **M6** | 🟡 | Runner | Execution timeouts passed but not enforced. | ⚪ Open (Phase 6) |
 | **M7** | 🟡 | Config | `AGENT_OS_DATA_DIR` mismatch in `.env.example`. | ✅ Fixed (Phase 0) |
 | **M8** | 🟡 | Clean Code | Multiple files exceeding 300-line modularity threshold. | ⚪ Open |
-| **L1** | ⚪ | Wiki | Linear file search in wiki store. | ⚪ Open (Phase 3) |
+| **L1** | ⚪ | Wiki | Linear file search in wiki store; wiki_read calls private _resolve_safe_path. | ✅ Addressed (Phase 3) |
 | **L2** | ⚪ | Docs | Missing operational and architecture documentation. | 🟨 In Progress |
 | **G1** | 🟠 | Gateway | Reasoning models exhaust reply budget if `max_tokens` is constrained. | ✅ Fixed (Phase 0/1) |
 | **G2** | 🟠 | Gateway | Disparate thinking toggle syntax across vLLM and Ollama. | ✅ Fixed (Phase 0/1) |

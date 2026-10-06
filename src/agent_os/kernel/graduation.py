@@ -11,6 +11,6 @@ class GraduationService:
         self.store = wiki_store
         self.wiki_store = wiki_store
 
-    def execute_graduation(self) -> GraduationReport:
+    def execute_graduation(self, collision_resolution: str = "rename") -> GraduationReport:
         """Scan 00_Inbox and graduate compliant notes into structured category folders."""
-        return self.store.graduate_inbox()
+        return self.store.graduate_inbox(collision_resolution=collision_resolution)

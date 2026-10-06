@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 from agent_os.cli.context import ReplContext
 from agent_os.cli.registry import CommandRegistry, UsageError, make_parser
 from agent_os.domain.schedule import ScheduledRoutine
+from agent_os.domain.wiki import ProtectedFolder
 from agent_os.kernel.scheduler import compute_next_run
 
 _routine_parser = make_parser("/routine add")
@@ -75,11 +76,63 @@ def register(reg: CommandRegistry) -> None:
                 ctx.console.write(f"  [{env.status}] {env.journey_id}: {env.summary[:120]}")
         ctx.console.dim(f"ambient nudges queued: {len(sig._nudge_queue)} (global)")
 
-    @reg.register("wiki", "Show wiki vault tree on disk")
+    @reg.register(
+        "wiki",
+        "Wiki: /wiki [tree] | list [cat] | read <path> | search <q> | graduate [rename|fail]",
+    )
     async def _wiki(ctx: ReplContext, args: list[str]) -> None:
-        root = ctx.kernel.wiki_store.root_dir
-        ctx.console.info(str(root))
-        for path in sorted(root.rglob("*")):
-            rel = path.relative_to(root)
-            indent = "  " * (len(rel.parts) - 1)
-            ctx.console.write(f"{indent}{rel.name}{'/' if path.is_dir() else ''}")
+        store = ctx.kernel.wiki_store
+        sub = args[0] if args else "tree"
+        if sub == "tree":
+            root = store.root_dir
+            ctx.console.info(str(root))
+            for path in sorted(root.rglob("*")):
+                rel = path.relative_to(root)
+                indent = "  " * (len(rel.parts) - 1)
+                ctx.console.write(f"{indent}{rel.name}{'/' if path.is_dir() else ''}")
+        elif sub == "list":
+            folder_name = args[1] if len(args) > 1 else ProtectedFolder.NOTES.value
+            try:
+                folder = ProtectedFolder(folder_name)
+            except ValueError as err:
+                valid = [f.value for f in ProtectedFolder]
+                raise UsageError(f"Invalid category '{folder_name}'. Choose from {valid}") from err
+
+            notes = store.list_category(folder)
+            if not notes:
+                ctx.console.dim(f"no notes in {folder.value}")
+            for n in notes:
+                ctx.console.write(f"  {n}")
+        elif sub == "read":
+            if len(args) < 2:
+                raise UsageError("usage: /wiki read <relative-path>")
+            try:
+                fm, body, total_lines, clamped = store.read_note_detailed(args[1], max_lines=100)
+                ctx.console.ok(f"[{fm.category}] {fm.title} (tags: {fm.tags})")
+                ctx.console.write(body)
+                if clamped:
+                    ctx.console.dim(f"[clamped to 100 lines; {total_lines} total lines]")
+            except Exception as e:
+                ctx.console.warn(str(e))
+        elif sub == "search":
+            if len(args) < 2:
+                raise UsageError("usage: /wiki search <query>")
+            q = " ".join(args[1:])
+            matches = store.search_notes(q, limit=10)
+            if not matches:
+                ctx.console.dim(f"no notes matched '{q}'")
+            for path, snippet in matches:
+                ctx.console.write(f"  [{path}] {snippet}")
+        elif sub == "graduate":
+            mode = args[1] if len(args) > 1 else "rename"
+            report = store.graduate_inbox(collision_resolution=mode)
+            style = "green" if report.graduated_count > 0 else "dim"
+            ctx.console.write(
+                f"graduated={report.graduated_count} failed={report.failed_count}", style
+            )
+            for f in report.graduated_files:
+                ctx.console.ok(f"graduated: {f}")
+            for failure in report.failures:
+                ctx.console.warn(f"quarantined {failure.filename}: {'; '.join(failure.reasons)}")
+        else:
+            raise UsageError("unknown /wiki subcommand: tree | list | read | search | graduate")

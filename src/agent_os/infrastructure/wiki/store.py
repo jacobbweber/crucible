@@ -25,7 +25,7 @@ class WikiStore:
         templates_dir = self.root_dir / ProtectedFolder.RESOURCES.value / "templates"
         templates_dir.mkdir(parents=True, exist_ok=True)
 
-    def _resolve_safe_path(self, relative_path: str | Path) -> Path:
+    def resolve_safe_path(self, relative_path: str | Path) -> Path:
         """Enforce strict path confinement within the vault root.
 
         Raises:
@@ -40,19 +40,35 @@ class WikiStore:
             ) from exc
         return resolved
 
-    def read_note(self, relative_path: str, max_lines: int = 200) -> tuple[NoteFrontmatter, str]:
-        """Read and parse note frontmatter and body, truncating body reading to max_lines."""
-        target = self._resolve_safe_path(relative_path)
+    def _resolve_safe_path(self, relative_path: str | Path) -> Path:
+        """Backward-compatible alias for resolve_safe_path."""
+        return self.resolve_safe_path(relative_path)
+
+    def read_note_detailed(
+        self, relative_path: str, max_lines: int = 200
+    ) -> tuple[NoteFrontmatter, str, int, bool]:
+        """Read and parse note frontmatter and body with line-budget metrics.
+
+        Returns:
+            (frontmatter, truncated_body, total_lines, is_clamped)
+        """
+        target = self.resolve_safe_path(relative_path)
         if not target.is_file():
             raise FileNotFoundError(f"Note not found: {relative_path}")
 
         content = target.read_text(encoding="utf-8")
-        frontmatter, body = parse_frontmatter(content)
+        frontmatter, full_body = parse_frontmatter(content)
 
-        lines = body.splitlines(keepends=True)
-        if len(lines) > max_lines:
-            body = "".join(lines[:max_lines])
+        lines = full_body.splitlines(keepends=True)
+        total_lines = len(lines)
+        clamped = total_lines > max_lines
+        body = "".join(lines[:max_lines]) if clamped else full_body
 
+        return frontmatter, body, total_lines, clamped
+
+    def read_note(self, relative_path: str, max_lines: int = 200) -> tuple[NoteFrontmatter, str]:
+        """Read and parse note frontmatter and body, truncating body reading to max_lines."""
+        frontmatter, body, _, _ = self.read_note_detailed(relative_path, max_lines=max_lines)
         return frontmatter, body
 
     def write_note(
@@ -68,7 +84,7 @@ class WikiStore:
             ValueError: If attempting to overwrite a protected root directory.
             FileExistsError: If file exists and overwrite is False.
         """
-        target = self._resolve_safe_path(relative_path)
+        target = self.resolve_safe_path(relative_path)
         protected_roots = {self.root_dir} | {
             (self.root_dir / folder.value).resolve() for folder in ProtectedFolder
         }
@@ -99,8 +115,79 @@ class WikiStore:
             if path.is_file()
         )
 
-    def graduate_inbox(self) -> GraduationReport:
-        """Scan 00_Inbox/ and graduate valid notes into 01_Notes/{category}/."""
+    def search_notes(
+        self,
+        query: str,
+        limit: int = 5,
+        folder: ProtectedFolder = ProtectedFolder.NOTES,
+    ) -> list[tuple[str, str]]:
+        """Search markdown notes in designated folder matching query against title, tags, or body.
+
+        Returns:
+            List of (relative_path, snippet) tuples.
+        """
+        folder_path = self.root_dir / folder.value
+        if not folder_path.exists():
+            return []
+
+        matches: list[tuple[str, str]] = []
+        q = query.lower()
+
+        for file_path in sorted(folder_path.rglob("*.md")):
+            if len(matches) >= limit:
+                break
+
+            try:
+                raw_text = file_path.read_text(encoding="utf-8")
+            except Exception:
+                continue
+
+            # Fast filter: skip full parsing if query substring not in file
+            if q not in raw_text.lower():
+                continue
+
+            try:
+                fm, body = parse_frontmatter(raw_text)
+            except Exception:
+                continue
+
+            rel_path = str(file_path.relative_to(self.root_dir)).replace("\\", "/")
+            matched = False
+            snippet = ""
+
+            for line in body.splitlines():
+                if q in line.lower():
+                    matched = True
+                    snippet = line.strip()
+                    break
+
+            if not matched and q in fm.title.lower():
+                matched = True
+                snippet = fm.title
+
+            if not matched:
+                for tag in fm.tags:
+                    if q in tag.lower():
+                        matched = True
+                        snippet = f"Tag: {tag}"
+                        break
+
+            if matched:
+                matches.append((rel_path, snippet))
+
+        return matches
+
+    def graduate_inbox(
+        self, collision_resolution: str = "rename"
+    ) -> GraduationReport:
+        """Scan 00_Inbox/ and graduate valid notes into 01_Notes/{category}/.
+
+        Args:
+            collision_resolution: Strategy when destination note exists.
+                'rename' (default): safely appends _1, _2 suffix without data loss.
+                'fail': quarantine note in 00_Inbox/ with explicit failure reason.
+                'overwrite': replace existing file.
+        """
         inbox_dir = self.root_dir / ProtectedFolder.INBOX.value
         if not inbox_dir.exists():
             return GraduationReport(
@@ -118,7 +205,13 @@ class WikiStore:
 
         for file_path in sorted(inbox_dir.glob("*.md")):
             reasons: list[str] = []
-            content = file_path.read_text(encoding="utf-8")
+            try:
+                content = file_path.read_text(encoding="utf-8")
+            except Exception as exc:
+                failures.append(
+                    GraduationFailure(filename=file_path.name, reasons=[f"Cannot read file: {exc}"])
+                )
+                continue
 
             try:
                 fm, _ = parse_frontmatter(content)
@@ -142,17 +235,42 @@ class WikiStore:
                 reasons.append("Category must not be empty")
             elif clean_category.lower() in protected_names:
                 reasons.append(f"Category '{clean_category}' points to a protected folder")
-            elif ".." in clean_category or "/" in clean_category or "\\" in clean_category:
+            elif any(c in clean_category for c in ("..", "/", "\\", ":", "\x00")):
                 reasons.append(f"Category '{clean_category}' contains invalid path characters")
+
+            # Verify destination folder does not escape 01_Notes
+            notes_root = (self.root_dir / ProtectedFolder.NOTES.value).resolve()
+            dest_dir = (notes_root / clean_category).resolve()
+            try:
+                dest_dir.relative_to(notes_root)
+            except ValueError:
+                reasons.append(f"Category '{clean_category}' attempts to escape notes directory")
+
+            dest_file = dest_dir / file_path.name
+            try:
+                self.resolve_safe_path(dest_file)
+            except ValueError as exc:
+                reasons.append(f"Security violation for destination: {exc}")
+
+            if dest_file.exists():
+                if collision_resolution == "fail":
+                    reasons.append(
+                        f"Destination file already exists: {clean_category}/{dest_file.name}"
+                    )
+                elif collision_resolution == "rename":
+                    counter = 1
+                    stem = file_path.stem
+                    suffix = file_path.suffix
+                    while dest_file.exists():
+                        dest_file = dest_dir / f"{stem}_{counter}{suffix}"
+                        counter += 1
 
             if reasons:
                 failures.append(GraduationFailure(filename=file_path.name, reasons=reasons))
             else:
-                dest_dir = self.root_dir / ProtectedFolder.NOTES.value / clean_category
                 dest_dir.mkdir(parents=True, exist_ok=True)
-                dest_file = dest_dir / file_path.name
                 file_path.replace(dest_file)
-                graduated_files.append(file_path.name)
+                graduated_files.append(dest_file.name)
 
         return GraduationReport(
             graduated_count=len(graduated_files),

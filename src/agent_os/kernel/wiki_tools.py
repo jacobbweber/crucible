@@ -7,7 +7,6 @@ from agent_os.domain.tools import (
     ToolParameterSchema,
 )
 from agent_os.domain.wiki import NoteFrontmatter, ProtectedFolder
-from agent_os.infrastructure.wiki.frontmatter import parse_frontmatter
 from agent_os.infrastructure.wiki.store import WikiStore
 
 
@@ -132,21 +131,9 @@ class WikiToolSuite:
     def wiki_read(self, path: str, max_lines: int = 200) -> ToolExecutionResult:
         """Read note frontmatter and body content, enforcing max_lines ceiling."""
         try:
-            target = self.store._resolve_safe_path(path)
-            if not target.is_file():
-                return ToolExecutionResult(
-                    tool_name="wiki_read",
-                    success=False,
-                    output="",
-                    error=f"Note not found: {path}",
-                )
-
-            raw_content = target.read_text(encoding="utf-8")
-            _, full_body = parse_frontmatter(raw_content)
-            total_lines = len(full_body.splitlines())
-            clamped = total_lines > max_lines
-
-            frontmatter, body = self.store.read_note(path, max_lines=max_lines)
+            frontmatter, body, total_lines, clamped = self.store.read_note_detailed(
+                path, max_lines=max_lines
+            )
 
             meta_lines = [
                 "---",
@@ -241,61 +228,25 @@ class WikiToolSuite:
 
     def wiki_search(self, query: str, limit: int = 5) -> ToolExecutionResult:
         """Search markdown notes in 01_Notes/ matching query against title, tags, and body."""
-        notes_dir = self.store.root_dir / ProtectedFolder.NOTES.value
-        if not notes_dir.exists():
+        try:
+            matches = self.store.search_notes(query=query, limit=limit)
+            if not matches:
+                output = f"No notes matched query: '{query}'"
+            else:
+                output = "\n".join(f"- [{rel}]: {snip}" for rel, snip in matches)
+
             return ToolExecutionResult(
                 tool_name="wiki_search",
                 success=True,
-                output="No matches found.",
+                output=output,
             )
-
-        matches: list[str] = []
-        q = query.lower()
-
-        for file_path in sorted(notes_dir.rglob("*.md")):
-            if len(matches) >= limit:
-                break
-            try:
-                content = file_path.read_text(encoding="utf-8")
-                fm, body = parse_frontmatter(content)
-            except Exception:
-                continue
-
-            rel_path = str(file_path.relative_to(self.store.root_dir)).replace("\\", "/")
-
-            matched = False
-            snippet = ""
-
-            for line in body.splitlines():
-                if q in line.lower():
-                    matched = True
-                    snippet = line.strip()
-                    break
-
-            if not matched and q in fm.title.lower():
-                matched = True
-                snippet = fm.title
-
-            if not matched:
-                for tag in fm.tags:
-                    if q in tag.lower():
-                        matched = True
-                        snippet = f"Tag: {tag}"
-                        break
-
-            if matched:
-                matches.append(f"- [{rel_path}]: {snippet}")
-
-        if not matches:
-            output = f"No notes matched query: '{query}'"
-        else:
-            output = "\n".join(matches)
-
-        return ToolExecutionResult(
-            tool_name="wiki_search",
-            success=True,
-            output=output,
-        )
+        except Exception as e:
+            return ToolExecutionResult(
+                tool_name="wiki_search",
+                success=False,
+                output="",
+                error=str(e),
+            )
 
     def wiki_graduate_inbox(self) -> ToolExecutionResult:
         """Validate frontmatter of staged notes in 00_Inbox/ and graduate valid notes."""
