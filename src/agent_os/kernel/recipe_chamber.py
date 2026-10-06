@@ -15,9 +15,23 @@ from agent_os.kernel.runner import NativeRunner
 class RecipeChamber:
     """Coordinates isolated sub-job execution within sandboxed journey scratchpads."""
 
-    def __init__(self, runner: NativeRunner, session_repo: SessionRepository) -> None:
+    def __init__(
+        self,
+        runner: NativeRunner,
+        session_repo: SessionRepository,
+        tool_tiers: dict[str, ActionTier] | None = None,
+        tool_definitions: dict[str, ToolDefinition] | None = None,
+        default_tier: ActionTier | None = None,
+    ) -> None:
         self.runner = runner
         self.repo = session_repo
+        self.tool_tiers = tool_tiers if tool_tiers is not None else {}
+        self.tool_definitions = tool_definitions if tool_definitions is not None else {}
+        self._default_tier = (
+            default_tier
+            if default_tier is not None
+            else (ActionTier.DESTRUCTIVE if tool_tiers is not None else ActionTier.STATE_CHANGE)
+        )
 
     async def execute_sub_job(self, request: SubJobExecutionRequest) -> SubJobReturnEnvelope:
         """Execute a sub-job task hermetically and record telemetry in the journey scratchpad."""
@@ -28,14 +42,26 @@ class RecipeChamber:
         )
 
         # 2. Construct runner execution request
-        tools = [
-            ToolDefinition(
-                name=t_name,
-                description=f"Target tool: {t_name}",
-                action_tier=ActionTier.STATE_CHANGE,
-            )
-            for t_name in request.packet.target_tools
-        ]
+        tools: list[ToolDefinition] = []
+        for t_name in request.packet.target_tools:
+            if t_name in self.tool_definitions:
+                tools.append(self.tool_definitions[t_name])
+            elif t_name in self.tool_tiers:
+                tools.append(
+                    ToolDefinition(
+                        name=t_name,
+                        description=f"Target tool: {t_name}",
+                        action_tier=self.tool_tiers[t_name],
+                    )
+                )
+            else:
+                tools.append(
+                    ToolDefinition(
+                        name=t_name,
+                        description=f"Target tool: {t_name}",
+                        action_tier=self._default_tier,
+                    )
+                )
         runner_req = RunnerExecutionRequest(
             task=request.task,
             modality="react" if tools else "direct",

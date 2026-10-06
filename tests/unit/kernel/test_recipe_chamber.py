@@ -7,7 +7,7 @@ import pytest
 
 from agent_os.domain.gateway import CompletionRequest, StreamChunk
 from agent_os.domain.ipc import SubJobExecutionRequest
-from agent_os.domain.policy import ApprovalMode, PolicyDecisionType
+from agent_os.domain.policy import ActionTier, ApprovalMode, PolicyDecisionType
 from agent_os.domain.runbook import CompiledExecutionPacket
 from agent_os.domain.tools import ToolExecutionResult
 from agent_os.infrastructure.gateway.base import BaseModelAdapter
@@ -190,3 +190,101 @@ async def test_recipe_chamber_failure_marshaling(tmp_path: Path) -> None:
     assert journey is not None
     assert journey.status == "failed"
     assert "Policy gate blocked" in (journey.summary or "")
+
+
+@pytest.mark.asyncio
+async def test_recipe_chamber_preserves_destructive_tier_blocks_in_balanced(
+    tmp_path: Path,
+) -> None:
+    """Verify DESTRUCTIVE tools are not bypassed as STATE_CHANGE in BALANCED mode."""
+    db_file = tmp_path / "session_store.db"
+    repo = SessionRepository(db_file)
+    session = repo.create_session("Destructive Task Session")
+
+    adapter = MockModelAdapter(
+        responses=[
+            '{"action": "drop_all_tables", "parameters": {"confirm": true}}',
+        ]
+    )
+    gate = ToolPolicyGate(ApprovalMode.BALANCED)
+
+    async def mock_drop(**kw: object) -> ToolExecutionResult:
+        return ToolExecutionResult(tool_name="drop_all_tables", success=True, output="dropped")
+
+    runner = NativeRunner(
+        model_adapter=adapter,
+        policy_gate=gate,
+        tool_dispatcher={"drop_all_tables": mock_drop},
+    )
+    # Pass tool_tiers with drop_all_tables as DESTRUCTIVE (NO explicit override)
+    chamber = RecipeChamber(
+        runner=runner,
+        session_repo=repo,
+        tool_tiers={"drop_all_tables": ActionTier.DESTRUCTIVE},
+    )
+
+    packet = CompiledExecutionPacket(
+        system_prompt="System instructions",
+        target_tools=["drop_all_tables"],
+        token_estimate=5,
+    )
+    request = SubJobExecutionRequest(
+        session_id=session.session_id,
+        task="Drop database tables",
+        packet=packet,
+    )
+
+    envelope = await chamber.execute_sub_job(request)
+
+    assert envelope.status == "failed"
+    assert "Policy gate blocked tool drop_all_tables" in envelope.summary
+    assert "Destructive operations require confirmation in balanced mode" in envelope.summary
+
+
+@pytest.mark.asyncio
+async def test_recipe_chamber_preserves_read_tier_allows_in_strict(
+    tmp_path: Path,
+) -> None:
+    """Verify READ tools are not misclassified as STATE_CHANGE and succeed in STRICT mode."""
+    db_file = tmp_path / "session_store.db"
+    repo = SessionRepository(db_file)
+    session = repo.create_session("Read Task Session")
+
+    adapter = MockModelAdapter(
+        responses=[
+            '{"action": "safe_read", "parameters": {"path": "notes.md"}}',
+            "Note content read successfully.",
+        ]
+    )
+    gate = ToolPolicyGate(ApprovalMode.STRICT)
+
+    async def mock_read(path: str) -> ToolExecutionResult:
+        return ToolExecutionResult(tool_name="safe_read", success=True, output="note body")
+
+    runner = NativeRunner(
+        model_adapter=adapter,
+        policy_gate=gate,
+        tool_dispatcher={"safe_read": mock_read},
+    )
+    chamber = RecipeChamber(
+        runner=runner,
+        session_repo=repo,
+        tool_tiers={"safe_read": ActionTier.READ},
+    )
+
+    packet = CompiledExecutionPacket(
+        system_prompt="System instructions",
+        target_tools=["safe_read"],
+        token_estimate=5,
+    )
+    request = SubJobExecutionRequest(
+        session_id=session.session_id,
+        task="Read notes safely",
+        packet=packet,
+    )
+
+    envelope = await chamber.execute_sub_job(request)
+
+    assert envelope.status == "completed"
+    assert "read successfully" in envelope.summary
+

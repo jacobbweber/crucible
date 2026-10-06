@@ -35,3 +35,14 @@ def test_decrypt_with_wrong_key_fails() -> None:
 
     with pytest.raises(InvalidToken):
         decrypt_payload(encrypted, key2)
+
+
+def test_derive_master_key_empty_passphrase_raises() -> None:
+    """Verify derive_master_key rejects empty or whitespace-only passphrases."""
+    salt = b"1234567812345678"
+    with pytest.raises(ValueError, match="Passphrase must be a non-empty string"):
+        derive_master_key(salt, "")
+
+    with pytest.raises(ValueError, match="Passphrase must be a non-empty string"):
+        derive_master_key(salt, "   ")
+

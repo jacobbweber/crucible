@@ -17,7 +17,7 @@ from agent_os.domain.policy import (
     ToolCallRequest,
 )
 from agent_os.domain.schedule import RoutineExecutionLog
-from agent_os.domain.tools import ToolExecutionResult
+from agent_os.domain.tools import ToolDefinition, ToolExecutionResult
 from agent_os.infrastructure.gateway.base import BaseModelAdapter
 from agent_os.infrastructure.gateway.semaphore import InferenceSemaphore
 from agent_os.infrastructure.security.vault_repo import CredentialVaultRepository
@@ -120,6 +120,7 @@ class AgentOSKernel:
         # Tools registration
         self.tools: dict[str, Callable[..., Any]] = {}
         self._tool_tiers: dict[str, ActionTier] = {}
+        self._tool_definitions: dict[str, ToolDefinition] = {}
         self.tool_dispatcher: dict[
             str, Callable[..., Coroutine[Any, Any, ToolExecutionResult]]
         ] = {}
@@ -132,7 +133,12 @@ class AgentOSKernel:
             policy_gate=self.policy_gate,
             tool_dispatcher=self.tool_dispatcher,
         )
-        self.chamber = RecipeChamber(runner=self.runner, session_repo=session_repo)
+        self.chamber = RecipeChamber(
+            runner=self.runner,
+            session_repo=session_repo,
+            tool_tiers=self._tool_tiers,
+            tool_definitions=self._tool_definitions,
+        )
 
         # Signaling & Dispatch
         self.signaler = CompletionSignaler()
@@ -166,22 +172,31 @@ class AgentOSKernel:
         for defn in self.wiki_tools.get_definitions():
             fn = getattr(self.wiki_tools, defn.name, None)
             if fn:
-                self.register_tool(defn.name, fn, defn.action_tier)
+                self.register_tool(defn.name, fn, defn.action_tier, definition=defn)
 
         for defn in self.education_tools.get_definitions():
             fn = getattr(self.education_tools, defn.name, None)
             if fn:
-                self.register_tool(defn.name, fn, defn.action_tier)
+                self.register_tool(defn.name, fn, defn.action_tier, definition=defn)
 
     def register_tool(
         self,
         name: str,
         fn: Callable[..., Any],
         action_tier: ActionTier = ActionTier.STATE_CHANGE,
+        definition: ToolDefinition | None = None,
     ) -> None:
         """Register a new tool into the kernel execution and dispatch registry."""
         self.tools[name] = fn
         self._tool_tiers[name] = action_tier
+        if definition is not None:
+            self._tool_definitions[name] = definition
+        else:
+            self._tool_definitions[name] = ToolDefinition(
+                name=name,
+                description=f"Tool: {name}",
+                action_tier=action_tier,
+            )
         self.tool_dispatcher[name] = self._make_tool_invoker(name, fn)
 
     def _make_tool_invoker(
@@ -211,17 +226,24 @@ class AgentOSKernel:
                     error=str(e),
                 )
 
-            if resolved.secrets_to_scrub and tool_res.output:
-                scrubbed = self.credential_proxy.scrub_text(
-                    tool_res.output, resolved.secrets_to_scrub
-                )
-                tool_res = ToolExecutionResult(
-                    tool_name=tool_name,
-                    success=tool_res.success,
-                    output=scrubbed.sanitized_text,
-                    error=tool_res.error,
-                )
-            return tool_res
+            clean_output = tool_res.output
+            clean_error = tool_res.error
+            if resolved.secrets_to_scrub:
+                if clean_output:
+                    clean_output = self.credential_proxy.scrub_text(
+                        clean_output, resolved.secrets_to_scrub
+                    ).sanitized_text
+                if clean_error:
+                    clean_error = self.credential_proxy.scrub_text(
+                        clean_error, resolved.secrets_to_scrub
+                    ).sanitized_text
+
+            return ToolExecutionResult(
+                tool_name=tool_name,
+                success=tool_res.success,
+                output=clean_output,
+                error=clean_error,
+            )
 
         return _invoker
 

@@ -2,23 +2,27 @@
 
 import base64
 import json
-import uuid
 
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
 
-def derive_master_key(salt: bytes, passphrase: str | None = None) -> bytes:
-    """Derive a URL-safe base64-encoded 32-byte Fernet key using PBKDF2HMAC."""
-    secret = passphrase if passphrase is not None else str(uuid.getnode())
+def derive_master_key(salt: bytes, passphrase: str) -> bytes:
+    """Derive a URL-safe base64-encoded 32-byte Fernet key using PBKDF2HMAC.
+
+    Raises:
+        ValueError: If passphrase is empty or not provided.
+    """
+    if not passphrase or not passphrase.strip():
+        raise ValueError("Passphrase must be a non-empty string for master key derivation")
     kdf = PBKDF2HMAC(
         algorithm=hashes.SHA256(),
         length=32,
         salt=salt,
         iterations=100_000,
     )
-    raw_key = kdf.derive(secret.encode("utf-8"))
+    raw_key = kdf.derive(passphrase.encode("utf-8"))
     return base64.urlsafe_b64encode(raw_key)
 
 

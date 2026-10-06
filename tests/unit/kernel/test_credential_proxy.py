@@ -76,3 +76,20 @@ def test_pass_through_non_vault_parameters(tmp_path: Path) -> None:
     assert result.resolved_params == raw_params
     assert result.resolved_aliases == []
     assert result.secrets_to_scrub == []
+
+
+def test_scrub_error_message_containing_secret(tmp_path: Path) -> None:
+    """Verify secrets leaked inside error messages or exceptions are redacted."""
+    proxy, vault = _create_proxy(tmp_path)
+    vault.store_credential(
+        alias="vault://cloud-key",
+        cred_type=CredentialType.API_KEY,
+        secret_payload={"token": "super_secret_token_xyz999"},
+    )
+    resolved = proxy.resolve_parameters({"key": "vault://cloud-key"})
+    error_msg = f"HTTP 401 Unauthorized: Invalid key '{resolved.resolved_params['key']}'"
+    scrubbed = proxy.scrub_text(error_msg, resolved.secrets_to_scrub)
+    assert "super_secret_token_xyz999" not in scrubbed.sanitized_text
+    assert "[REDACTED_SECRET]" in scrubbed.sanitized_text
+    assert scrubbed.redaction_count == 1
+

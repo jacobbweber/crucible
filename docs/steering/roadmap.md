@@ -23,7 +23,7 @@ Per `.agents/rules/live-testing.md`, every live test and smoke verification must
 | 1 | **Gateway & Model Routing** | Model I/O, streaming, canonical message parts | Stream completion, token budgeting, concurrency semaphore, timeout handling | H3, H7, M5, G3, K1 | ✅ Complete |
 | 2 | **Storage & Ground Truth** | 5 SQLite DBs, WAL, FTS5 | Inspect schemas, atomic fact search ranking, recipe match lexical ranking | H1 | ✅ Complete |
 | 3 | **Wiki Vault & Graduation** | 4-folder vault, graduation pipeline | Ingestion, path-traversal rejection, safe collision resolution on graduation | H8, L1 | ✅ Complete |
-| 4 | **Security & Policy Gate** | Hardware-keyed vault, credential proxy, policy gate | Secret storage, `vault://` symbolic alias scrubbing, strict/balanced modes | H4, C3 | ⚪ Pending |
+| 4 | **Security & Policy Gate** | Hardware-keyed vault, credential proxy, policy gate | Secret storage, `vault://` symbolic alias scrubbing, strict/balanced modes | H4, C3 | ✅ Complete |
 | 5 | **Front Door & Memory** | Prompt assembly, fact recall, chat memory | Multi-turn chat with active trace, fact recall, sliding window past 15 turns | M2, M5 | ⚪ Pending |
 | 6 | **Worker Runtime** | Recipe chamber, runner modalities, journeys | ReAct runner with live model calling wiki tools, cycle detection, brief schema | **C2**, H2, M6 | ⚪ Pending |
 | 7 | **Dispatch & Pipeline** | Recipe vs ephemeral task routing | Near-miss recipe matching, ephemeral brief synthesis, graduation evaluation | H1, H2 | ⚪ Pending |
@@ -41,12 +41,12 @@ Severity: 🔴 Critical · 🟠 High · 🟡 Medium · ⚪ Low
 |---|---|---|---|---|
 | **C1** | 🔴 | Bootstrap | No composition root or entry point. | ✅ Fixed (Phase 0) |
 | **C2** | 🔴 | Runner | ReAct workers are never provided tool schemas or action format in prompt. | ⚪ Open (Phase 6) |
-| **C3** | 🔴 | Policy | Policy bypass in workers (`STATE_CHANGE` forced on all tools). | ⚪ Open (Phase 4) |
+| **C3** | 🔴 | Policy | Policy bypass in workers (`STATE_CHANGE` forced on all tools). | ✅ Fixed (Phase 4) |
 | **C4** | 🔴 | Integration | Chat cannot trigger jobs or tools (isolated halves). | ⚪ Open (Phase 10) |
 | **H1** | 🟠 | Dispatch | Recipe lexical matching ORs every word with low threshold fallback. | ✅ Fixed (Phase 2) |
 | **H2** | 🟠 | Runner | Recipe `execution_engine` ignored; PEV and stategraph unreachable. | ⚪ Open (Phase 6) |
 | **H3** | 🟠 | Gateway | Runner sends `role="tool"` without `tool_call_id`. | ✅ Fixed (Phase 1) |
-| **H4** | 🟠 | Security | Secrets scrubbed from output but not error; MAC-address default key derivation. | 🟨 Partly Fixed (Phase 0) |
+| **H4** | 🟠 | Security | Secrets scrubbed from output but not error; MAC-address default key derivation. | ✅ Fixed (Phase 4) |
 | **H5** | 🟠 | Isolation | Global nudge queue leaks results across sessions. | ⚪ Open (Phase 8) |
 | **H6** | 🟠 | Scheduler | In-memory routines lose state on restart; catch-up logic unwired. | ⚪ Open (Phase 8) |
 | **H7** | 🟠 | Concurrency | Inference semaphore only guards scheduler, bypassing chat & manual jobs. | ✅ Fixed (Phase 1) |

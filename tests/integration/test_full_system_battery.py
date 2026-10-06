@@ -295,3 +295,22 @@ async def test_full_system_credential_proxy_and_guardrail(tmp_path: Path) -> Non
     assert "[REDACTED_SECRET]" in result.output
     assert "ghp_SecretAuthTokenXYZ987" not in result.output
     assert "Cluster prod-alpha deployed using token: [REDACTED_SECRET]." in result.output
+
+    # 5. Tool raising exception with secret in message -> assert error is scrubbed (H4)
+    def fail_service(api_key: str) -> None:
+        raise RuntimeError(f"Connection failed for {api_key} on backend")
+
+    kernel.register_tool(
+        name="fail_service",
+        fn=fail_service,
+        action_tier=ActionTier.STATE_CHANGE,
+    )
+    fail_result = await kernel.execute_tool(
+        tool_name="fail_service",
+        parameters={"api_key": "vault://test-token"},
+    )
+    assert fail_result.success is False
+    assert "ghp_SecretAuthTokenXYZ987" not in fail_result.error
+    assert "[REDACTED_SECRET]" in fail_result.error
+    assert "Connection failed for [REDACTED_SECRET] on backend" in fail_result.error
+
