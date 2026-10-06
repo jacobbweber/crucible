@@ -1,5 +1,6 @@
 """5-Beat task brief assembly and execution packet compilation engine."""
 
+from agent_os.domain.gateway import estimate_tokens
 from agent_os.domain.runbook import (
     CompiledExecutionPacket,
     RunbookDefinition,
@@ -48,7 +49,7 @@ class TaskBriefAssembler:
                 "Context isolation violation: <human_profile> detected in task brief prompt"
             )
 
-        token_estimate = len(rendered_prompt) // 4
+        token_estimate = estimate_tokens(rendered_prompt)
 
         return CompiledExecutionPacket(
             system_prompt=rendered_prompt,

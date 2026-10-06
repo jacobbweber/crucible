@@ -1,6 +1,7 @@
 """Root system prompt compilation engine adhering to context isolation and ADR-006/ADR-009."""
 
 from agent_os.domain.companion import AssembledSystemPrompt, CompanionConfig
+from agent_os.domain.gateway import estimate_tokens
 from agent_os.kernel.tone import get_tone_instructions
 
 
@@ -62,7 +63,7 @@ class PromptAssembler:
         sections.append(core_boundaries)
 
         rendered_prompt = "\n\n".join(sections)
-        token_estimate = len(rendered_prompt) // 4
+        token_estimate = estimate_tokens(rendered_prompt)
 
         return AssembledSystemPrompt(
             rendered_prompt=rendered_prompt,

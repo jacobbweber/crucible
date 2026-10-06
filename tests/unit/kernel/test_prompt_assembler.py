@@ -4,6 +4,7 @@ import pytest
 from pydantic import ValidationError
 
 from agent_os.domain.companion import CompanionConfig, HumanProfile, TonePreset
+from agent_os.domain.gateway import estimate_tokens
 from agent_os.kernel.prompt_assembler import PromptAssembler
 from agent_os.kernel.tone import get_tone_instructions
 
@@ -20,7 +21,7 @@ def test_assemble_system_prompt_includes_name_and_tone() -> None:
     assert "Astra" in result.rendered_prompt
     assert get_tone_instructions(TonePreset.CONCISE) in result.rendered_prompt
     assert "<recalled_facts>\nUser works on agent-os.\n</recalled_facts>" in result.rendered_prompt
-    assert result.token_estimate == len(result.rendered_prompt) // 4
+    assert result.token_estimate == estimate_tokens(result.rendered_prompt)
     assert not result.has_human_profile
 
     # Verify EMPTY tone leaves out tone directive

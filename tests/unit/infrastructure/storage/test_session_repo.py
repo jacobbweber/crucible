@@ -26,6 +26,23 @@ def test_session_creation_and_retrieval(tmp_path: Path) -> None:
     assert repo.get_session("non_existent_id") is None
 
 
+def test_ensure_session_idempotent(tmp_path: Path) -> None:
+    """Verify ensure_session creates missing session and returns existing session (M2)."""
+    db_file = tmp_path / "sessions.db"
+    repo = SessionRepository(db_file)
+
+    # First call provisions new session
+    session1 = repo.ensure_session("sess_auto_1", title="Auto Title")
+    assert session1.session_id == "sess_auto_1"
+    assert session1.title == "Auto Title"
+    assert not session1.is_archived
+
+    # Second call returns existing session without error
+    session2 = repo.ensure_session("sess_auto_1", title="Different Title")
+    assert session2.session_id == session1.session_id
+    assert session2.title == "Auto Title"
+
+
 def test_append_turn_sequence_order(tmp_path: Path) -> None:
     """Verify multiple turns increment turn_index monotonically and retrieve chronologically."""
     db_file = tmp_path / "sessions.db"

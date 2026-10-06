@@ -110,3 +110,13 @@ class StreamChunk(BaseModel):
     finish_reason: str | None = None
     reasoning: str = ""
     provider_data: dict[str, Any] = Field(default_factory=dict)
+
+
+def estimate_tokens(text: str) -> int:
+    """Estimate token count with conservative margin for code, symbols, and formatting."""
+    if not text:
+        return 0
+    char_est = int(len(text) / 3.5)
+    word_est = len(text.split())
+    return max(1, max(char_est, word_est))
+

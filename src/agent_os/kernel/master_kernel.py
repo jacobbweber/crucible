@@ -2,7 +2,7 @@
 
 import inspect
 from collections.abc import AsyncIterator, Callable, Coroutine
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any
 
 from agent_os.domain.companion import CompanionConfig
@@ -24,7 +24,6 @@ from agent_os.infrastructure.security.vault_repo import CredentialVaultRepositor
 from agent_os.infrastructure.storage.education_repo import EducationRepository
 from agent_os.infrastructure.storage.facts_repo import FactRepository
 from agent_os.infrastructure.storage.recipe_repo import RecipeRepository
-from agent_os.infrastructure.storage.session_db import get_connection
 from agent_os.infrastructure.storage.session_repo import SessionRepository
 from agent_os.infrastructure.wiki.store import WikiStore
 from agent_os.kernel.chat_loop import CompanionChatLoop
@@ -61,18 +60,7 @@ class _SchedulerSignalingDispatcher:
         task: str,
         available_tools: list[str] | None = None,
     ) -> DispatchResult:
-        if not self._session_repo.get_session(session_id):
-            now = datetime.now(UTC)
-            now_str = now.isoformat()
-            with get_connection(self._session_repo.db_path) as conn:
-                conn.execute(
-                    """
-                    INSERT OR IGNORE INTO sessions (
-                        session_id, title, created_at, updated_at, is_archived
-                    ) VALUES (?, ?, ?, ?, 0);
-                    """,
-                    (session_id, f"System Session: {session_id}", now_str, now_str),
-                )
+        self._session_repo.ensure_session(session_id, title=f"System Session: {session_id}")
         res = await self._dispatcher.dispatch_task(
             session_id, task, available_tools=available_tools
         )
@@ -290,6 +278,8 @@ class AgentOSKernel:
             session_repo=self.session_repo,
             model_adapter=self.model_adapter,
             config=CompanionConfig(name=self.config.companion_name),
+            context_window=self.config.context_window,
+            reserve_output_tokens=self.config.reserve_output_tokens,
         )
         async for event in chat_loop.execute_turn(
             user_input=request.user_input,
@@ -304,6 +294,7 @@ class AgentOSKernel:
         events: list[StreamTurnEvent] = []
         response_parts: list[str] = []
         final_turn_content = ""
+        last_error = ""
 
         async for event in self.stream_user_turn(request):
             events.append(event)
@@ -311,8 +302,12 @@ class AgentOSKernel:
                 response_parts.append(event.delta)
             elif event.event_type == "completed" and event.turn:
                 final_turn_content = event.turn.content
+            elif event.event_type == "error":
+                last_error = event.error_message or "Unknown error"
 
         response_text = "".join(response_parts) or final_turn_content
+        if not response_text and last_error:
+            response_text = f"Error during turn: {last_error}"
         nudges = self.signaler.poll_ambient_nudges()
 
         return TurnResponse(

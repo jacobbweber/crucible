@@ -7,7 +7,12 @@ from typing import Any
 import httpx
 
 from agent_os.domain.config import AppConfig
-from agent_os.domain.gateway import CompletionRequest, StreamChunk, ThinkingLevel
+from agent_os.domain.gateway import (
+    CompletionRequest,
+    StreamChunk,
+    ThinkingLevel,
+    estimate_tokens,
+)
 from agent_os.infrastructure.gateway.base import BaseModelAdapter
 from agent_os.infrastructure.gateway.semaphore import InferenceSemaphore
 
@@ -43,7 +48,9 @@ class VllmAdapter(BaseModelAdapter):
         request: CompletionRequest,
     ) -> AsyncIterator[StreamChunk]:
         url = f"{self.config.vllm_base_url.rstrip('/')}/chat/completions"
-        clamped_max_tokens = min(request.max_tokens, self.config.vllm_context_window)
+        prompt_tokens = sum(estimate_tokens(msg.text) for msg in request.messages)
+        available_output = max(128, self.config.vllm_context_window - prompt_tokens)
+        clamped_max_tokens = min(request.max_tokens, available_output)
 
         # G1 headroom: ensure output headroom when reasoning is enabled
         is_thinking = request.thinking_level in (
@@ -53,7 +60,7 @@ class VllmAdapter(BaseModelAdapter):
             ThinkingLevel.MAX,
         ) or (request.thinking_level is None and bool(self.config.vllm_enable_thinking))
         if is_thinking and clamped_max_tokens < 1024:
-            clamped_max_tokens = min(1024, self.config.vllm_context_window)
+            clamped_max_tokens = min(1024, available_output)
 
         # Format messages and resolve H3 (tool messages require tool_call_id)
         formatted_messages: list[dict[str, Any]] = []

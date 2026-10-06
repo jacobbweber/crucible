@@ -2,6 +2,7 @@
 
 import pytest
 
+from agent_os.domain.gateway import estimate_tokens
 from agent_os.domain.runbook import RunbookDefinition, TaskBrief
 from agent_os.kernel.brief_assembler import TaskBriefAssembler
 
@@ -34,7 +35,7 @@ def test_compile_packet_5_beat_structure() -> None:
         "Cluster status healthy and accepting connections"
         "</completion_standard>"
     ) in packet.system_prompt
-    assert packet.token_estimate == len(packet.system_prompt) // 4
+    assert packet.token_estimate == estimate_tokens(packet.system_prompt)
     assert packet.target_tools == []
 
 
@@ -98,4 +99,4 @@ def test_compile_packet_with_runbook() -> None:
     assert "- Smoke test suite passes" in packet.system_prompt
     assert "- Error rate below 0.01%" in packet.system_prompt
     assert packet.target_tools == ["k8s_apply", "curl_probe"]
-    assert packet.token_estimate == len(packet.system_prompt) // 4
+    assert packet.token_estimate == estimate_tokens(packet.system_prompt)

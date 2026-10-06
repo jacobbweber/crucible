@@ -63,7 +63,7 @@ async def test_vllm_adapter_context_window_clamp() -> None:
 
     chunks = [chunk async for chunk in adapter.complete(request)]
     assert chunks == []
-    assert captured_payload["max_tokens"] == 2048
+    assert captured_payload["max_tokens"] == 2047
 
 
 @pytest.mark.asyncio

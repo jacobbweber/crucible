@@ -79,7 +79,10 @@ def main(argv: list[str] | None = None) -> None:
         app_config=app_config,
         data_dir=args.data_dir,
         kernel_config=KernelConfig(
-            storage_root="", companion_name=args.name, approval_mode=args.policy
+            storage_root="",
+            companion_name=args.name,
+            approval_mode=args.policy,
+            context_window=app_config.vllm_context_window,
         ),
         trace_sink=TraceConsole(console),
     )

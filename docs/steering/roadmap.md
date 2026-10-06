@@ -24,7 +24,7 @@ Per `.agents/rules/live-testing.md`, every live test and smoke verification must
 | 2 | **Storage & Ground Truth** | 5 SQLite DBs, WAL, FTS5 | Inspect schemas, atomic fact search ranking, recipe match lexical ranking | H1 | ✅ Complete |
 | 3 | **Wiki Vault & Graduation** | 4-folder vault, graduation pipeline | Ingestion, path-traversal rejection, safe collision resolution on graduation | H8, L1 | ✅ Complete |
 | 4 | **Security & Policy Gate** | Hardware-keyed vault, credential proxy, policy gate | Secret storage, `vault://` symbolic alias scrubbing, strict/balanced modes | H4, C3 | ✅ Complete |
-| 5 | **Front Door & Memory** | Prompt assembly, fact recall, chat memory | Multi-turn chat with active trace, fact recall, sliding window past 15 turns | M2, M5 | ⚪ Pending |
+| 5 | **Front Door & Memory** | Prompt assembly, fact recall, chat memory | Multi-turn chat with active trace, fact recall, sliding window past 15 turns | M1, M2, M5 | ✅ Complete |
 | 6 | **Worker Runtime** | Recipe chamber, runner modalities, journeys | ReAct runner with live model calling wiki tools, cycle detection, brief schema | **C2**, H2, M6 | ⚪ Pending |
 | 7 | **Dispatch & Pipeline** | Recipe vs ephemeral task routing | Near-miss recipe matching, ephemeral brief synthesis, graduation evaluation | H1, H2 | ⚪ Pending |
 | 8 | **Signaling & Scheduler** | Background routines, session isolation | Multi-session nudge isolation, persistence across restarts, routine catch-up | H5, H6, M1 | ⚪ Pending |
@@ -51,11 +51,11 @@ Severity: 🔴 Critical · 🟠 High · 🟡 Medium · ⚪ Low
 | **H6** | 🟠 | Scheduler | In-memory routines lose state on restart; catch-up logic unwired. | ⚪ Open (Phase 8) |
 | **H7** | 🟠 | Concurrency | Inference semaphore only guards scheduler, bypassing chat & manual jobs. | ✅ Fixed (Phase 1) |
 | **H8** | 🟠 | Wiki | Inbox note graduation silently overwrites same-named files. | ✅ Fixed (Phase 3) |
-| **M1** | 🟡 | Layering | Raw SQL executed from kernel signaling dispatcher. | ⚪ Open (Phase 8) |
-| **M2** | 🟡 | Chat | Foreign key violations on unknown session swallowed silently. | ⚪ Open (Phase 5) |
+| **M1** | 🟡 | Layering | Raw SQL executed from kernel signaling dispatcher. | ✅ Fixed (Phase 5) |
+| **M2** | 🟡 | Chat | Foreign key violations on unknown session swallowed silently. | ✅ Fixed (Phase 5) |
 | **M3** | 🟡 | Education | Education datetime parsing and pedagogical advancement unwired. | ⚪ Open (Phase 9) |
 | **M4** | 🟡 | Code Quality | Duplicate attribute aliases throughout codebase. | ⚪ Open |
-| **M5** | 🟡 | Context | Token counting hardcoded to `len // 4` without model budget limits. | ⚪ Open (Phase 1) |
+| **M5** | 🟡 | Context | Token counting hardcoded to `len // 4` without model budget limits. | ✅ Fixed (Phase 5) |
 | **M6** | 🟡 | Runner | Execution timeouts passed but not enforced. | ⚪ Open (Phase 6) |
 | **M7** | 🟡 | Config | `AGENT_OS_DATA_DIR` mismatch in `.env.example`. | ✅ Fixed (Phase 0) |
 | **M8** | 🟡 | Clean Code | Multiple files exceeding 300-line modularity threshold. | ⚪ Open |

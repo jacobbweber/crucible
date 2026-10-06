@@ -177,3 +177,70 @@ async def test_chat_loop_error_handling(tmp_path: Path) -> None:
     assert events[0].event_type == "error"
     assert events[0].error_message is not None
     assert "Model inference failed: GPU OOM" in events[0].error_message
+
+
+@pytest.mark.asyncio
+async def test_chat_loop_auto_creates_session_if_missing(tmp_path: Path) -> None:
+    """Verify executing a turn with an uncreated session ID auto-provisions session (M2)."""
+    repo = SessionRepository(tmp_path / "sessions.db")
+    unregistered_session_id = "unknown_sess_999"
+
+    adapter = MockModelAdapter([StreamChunk(delta="OK", finish_reason="stop")])
+    config = CompanionConfig(name="Astra")
+    loop = CompanionChatLoop(
+        session_id=unregistered_session_id,
+        session_repo=repo,
+        model_adapter=adapter,
+        config=config,
+    )
+
+    events: list[StreamTurnEvent] = []
+    async for event in loop.execute_turn("Auto provision me"):
+        events.append(event)
+
+    assert events[-1].event_type == "completed"
+    assert repo.get_session(unregistered_session_id) is not None
+    stored_turns = repo.get_recent_turns(unregistered_session_id)
+    assert len(stored_turns) == 2
+
+
+@pytest.mark.asyncio
+async def test_chat_loop_token_budget_pruning(tmp_path: Path) -> None:
+    """Verify history turns are pruned to stay within context window token budget (M5)."""
+    repo = SessionRepository(tmp_path / "sessions.db")
+    session = repo.create_session("Budget Pruning Test")
+
+    # Seed 5 large turns of ~200 tokens each
+    large_text = "word " * 180  # ~180 tokens
+    for i in range(5):
+        repo.append_turn(
+            session_id=session.session_id,
+            role="user" if i % 2 == 0 else "assistant",
+            content=f"Turn {i}: {large_text}",
+        )
+
+    adapter = MockModelAdapter([StreamChunk(delta="Done", finish_reason="stop")])
+    config = CompanionConfig(name="Astra")
+    # Setting tight context window: 800 tokens, 200 output reserve -> history budget ~400 tokens
+    loop = CompanionChatLoop(
+        session_id=session.session_id,
+        session_repo=repo,
+        model_adapter=adapter,
+        config=config,
+        sliding_window_size=15,
+        context_window=800,
+        reserve_output_tokens=200,
+    )
+
+    async for _ in loop.execute_turn("Next query"):
+        pass
+
+    assert len(adapter.requests) == 1
+    messages = adapter.requests[0].messages
+    # System prompt + pruned history + active user turn
+    # With 180-token turns and history budget ~400, at most 2 historical turns can fit!
+    history_messages = [m for m in messages if m.role in ("user", "assistant")][:-1]
+    assert len(history_messages) < 5
+    assert len(history_messages) >= 1
+    # Check that the most recent history turn (Turn 4) was preserved
+    assert "Turn 4" in history_messages[-1].content

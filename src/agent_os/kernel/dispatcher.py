@@ -5,7 +5,7 @@ import re
 from typing import Any
 
 from agent_os.domain.dispatch import DispatchDecision, DispatchResult
-from agent_os.domain.gateway import ChatMessage, CompletionRequest
+from agent_os.domain.gateway import ChatMessage, CompletionRequest, estimate_tokens
 from agent_os.domain.ipc import SubJobExecutionRequest
 from agent_os.domain.runbook import CompiledExecutionPacket, TaskBrief
 from agent_os.infrastructure.gateway.base import BaseModelAdapter
@@ -167,7 +167,7 @@ class ZeroCatalogDispatcher:
             packet = CompiledExecutionPacket(
                 system_prompt=recipe.body,
                 target_tools=recipe.metadata.required_tools,
-                token_estimate=len(recipe.body) // 4,
+                token_estimate=estimate_tokens(recipe.body),
             )
             envelope = await self.chamber.execute_sub_job(
                 SubJobExecutionRequest(

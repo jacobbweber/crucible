@@ -2,6 +2,7 @@
 
 from typing import Literal
 
+from agent_os.domain.gateway import estimate_tokens
 from agent_os.domain.ipc import SubJobReturnEnvelope
 
 
@@ -9,7 +10,7 @@ class SubJobMarshaller:
     """Compresses raw worker outputs into strictly bounded SubJobReturnEnvelopes."""
 
     @staticmethod
-    def compress_summary(text: str, max_chars: int = 800) -> str:
+    def compress_summary(text: str, max_chars: int = 700) -> str:
         """Clamp raw string down to max_chars, appending ellipsis within budget if truncated."""
         if len(text) <= max_chars:
             return text
@@ -28,8 +29,8 @@ class SubJobMarshaller:
         duration_ms: int = 0,
     ) -> SubJobReturnEnvelope:
         """Compress raw_output into summary and construct bounded return envelope."""
-        summary = cls.compress_summary(raw_output, max_chars=800)
-        token_estimate = len(summary) // 4
+        summary = cls.compress_summary(raw_output, max_chars=700)
+        token_estimate = estimate_tokens(summary)
         return SubJobReturnEnvelope(
             journey_id=journey_id,
             status=status,

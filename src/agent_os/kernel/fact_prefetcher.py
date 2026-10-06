@@ -2,6 +2,7 @@
 
 import re
 
+from agent_os.domain.gateway import estimate_tokens
 from agent_os.domain.memory import FactRecord, RecalledFactsPayload
 from agent_os.infrastructure.storage.facts_repo import FactRepository
 
@@ -62,7 +63,7 @@ class FactPrefetcher:
                 f"- [{f.entity_key}]: {f.fact_text}" for f in included_facts + [fact]
             ]
             candidate_block = "\n".join(["<recalled_facts>", *candidate_lines, "</recalled_facts>"])
-            if len(candidate_block) <= self.char_ceiling:
+            if estimate_tokens(candidate_block) <= self.token_ceiling:
                 included_facts.append(fact)
             else:
                 break
@@ -77,7 +78,7 @@ class FactPrefetcher:
 
         fact_lines = [f"- [{f.entity_key}]: {f.fact_text}" for f in included_facts]
         rendered_block = "\n".join(["<recalled_facts>", *fact_lines, "</recalled_facts>"])
-        token_estimate = len(rendered_block) // 4
+        token_estimate = estimate_tokens(rendered_block)
         matched_keys = list(dict.fromkeys(f.entity_key for f in included_facts))
 
         return RecalledFactsPayload(

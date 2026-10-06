@@ -4,7 +4,8 @@ from collections.abc import AsyncIterator
 
 from agent_os.domain.companion import CompanionConfig
 from agent_os.domain.continuum import ChatSessionState, StreamTurnEvent
-from agent_os.domain.gateway import ChatMessage, CompletionRequest
+from agent_os.domain.gateway import ChatMessage, CompletionRequest, estimate_tokens
+from agent_os.domain.session import TurnRecord
 from agent_os.infrastructure.gateway.base import BaseModelAdapter
 from agent_os.infrastructure.storage.session_repo import SessionRepository
 from agent_os.kernel.prompt_assembler import PromptAssembler
@@ -21,6 +22,8 @@ class CompanionChatLoop:
         config: CompanionConfig,
         sliding_window_size: int = 15,
         target_model: str | None = None,
+        context_window: int = 8192,
+        reserve_output_tokens: int = 1024,
     ) -> None:
         self.session_id = session_id
         self.session_repo = session_repo
@@ -30,6 +33,8 @@ class CompanionChatLoop:
         self.config = config
         self.sliding_window_size = sliding_window_size
         self.target_model = target_model
+        self.context_window = context_window
+        self.reserve_output_tokens = reserve_output_tokens
         self.assembler = PromptAssembler(config)
 
     def get_state(self) -> ChatSessionState:
@@ -49,6 +54,27 @@ class CompanionChatLoop:
             total_turns_recorded=total_turns,
         )
 
+    def _select_history_within_budget(
+        self,
+        user_turn_id: str,
+        history_budget: int,
+    ) -> list[ChatMessage]:
+        """Select freshest turns respecting sliding window count and token budget (M5)."""
+        recent_turns = self.session_repo.get_recent_turns(
+            self.session_id, limit=self.sliding_window_size + 1
+        )
+        candidates = [t for t in recent_turns if t.turn_id != user_turn_id]
+        selected: list[TurnRecord] = []
+        used = 0
+        for turn in reversed(candidates[-self.sliding_window_size :]):
+            tok = turn.token_count if turn.token_count > 0 else estimate_tokens(turn.content)
+            if used + tok > history_budget:
+                break
+            selected.append(turn)
+            used += tok
+        selected.reverse()
+        return [ChatMessage(role=t.role, content=t.content) for t in selected]
+
     async def execute_turn(
         self,
         user_input: str,
@@ -57,35 +83,44 @@ class CompanionChatLoop:
     ) -> AsyncIterator[StreamTurnEvent]:
         """Execute a single conversational turn with streaming inference and persistence."""
         try:
+            self.session_repo.ensure_session(self.session_id)
+            user_tokens = estimate_tokens(user_input)
             user_turn = self.session_repo.append_turn(
                 session_id=self.session_id,
                 role="user",
                 content=user_input,
-                token_count=len(user_input) // 4,
+                token_count=user_tokens,
             )
 
             assembled = self.assembler.assemble_system_prompt(
                 recalled_facts_block=recalled_facts_block,
                 background_completions_block=background_completions_block,
             )
+            system_tokens = estimate_tokens(assembled.rendered_prompt)
 
-            recent_turns = self.session_repo.get_recent_turns(
-                self.session_id, limit=self.sliding_window_size + 1
+            # Compute available history budget (context_window - output - system - user - margin)
+            history_budget = max(
+                0,
+                self.context_window
+                - self.reserve_output_tokens
+                - system_tokens
+                - user_tokens
+                - 100,
             )
-            history = [t for t in recent_turns if t.turn_id != user_turn.turn_id][
-                -self.sliding_window_size :
-            ]
+            history_messages = self._select_history_within_budget(
+                user_turn.turn_id, history_budget
+            )
 
             messages: list[ChatMessage] = [
-                ChatMessage(role="system", content=assembled.rendered_prompt)
+                ChatMessage(role="system", content=assembled.rendered_prompt),
+                *history_messages,
+                ChatMessage(role="user", content=user_input),
             ]
-            for t in history:
-                messages.append(ChatMessage(role=t.role, content=t.content))
-            messages.append(ChatMessage(role="user", content=user_input))
 
             request = CompletionRequest(
                 model=self.target_model,
                 messages=messages,
+                max_tokens=self.reserve_output_tokens,
                 stream=True,
             )
 
@@ -110,7 +145,7 @@ class CompanionChatLoop:
                 session_id=self.session_id,
                 role="assistant",
                 content=accumulated_text,
-                token_count=len(accumulated_text) // 4,
+                token_count=estimate_tokens(accumulated_text),
             )
             yield StreamTurnEvent(
                 event_type="completed",

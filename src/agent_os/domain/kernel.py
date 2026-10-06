@@ -16,6 +16,8 @@ class KernelConfig(BaseModel):
     companion_name: str = "Companion"
     max_concurrency: int = 1
     approval_mode: str = "balanced"
+    context_window: int = 8192
+    reserve_output_tokens: int = 1024
 
 
 class UserTurnRequest(BaseModel):

@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+from agent_os.domain.gateway import estimate_tokens
 from agent_os.infrastructure.storage.facts_repo import FactRepository
 from agent_os.kernel.fact_prefetcher import FactPrefetcher
 
@@ -23,7 +24,7 @@ def test_prefetch_user_alias_matching(tmp_path: Path) -> None:
     assert "<recalled_facts>" in payload.rendered_block
     assert "- [user]: User prefers Python and dark mode IDE theme." in payload.rendered_block
     assert "</recalled_facts>" in payload.rendered_block
-    assert payload.token_estimate == len(payload.rendered_block) // 4
+    assert payload.token_estimate == estimate_tokens(payload.rendered_block)
 
 
 def test_prefetch_explicit_entity_matching(tmp_path: Path) -> None:

@@ -1,0 +1,7 @@
+/session
+/fact add user User prefers local-first architectures
+/fact list user
+/recall architectural preferences
+Hello companion, what are my architectural preferences?
+/session
+/quit

@@ -44,7 +44,10 @@ def build_runtime(
     """Resolve storage, provision key material, and assemble the kernel and subsystems."""
     cfg = app_config or AppConfig()
     root = resolve_data_dir(data_dir if data_dir is not None else cfg.data_dir)
-    k_cfg = kernel_config or KernelConfig(storage_root=str(root))
+    k_cfg = kernel_config or KernelConfig(
+        storage_root=str(root),
+        context_window=cfg.vllm_context_window,
+    )
     semaphore = InferenceSemaphore(max_concurrency=k_cfg.max_concurrency)
 
     wiki_store = WikiStore(root / "wiki_vault")

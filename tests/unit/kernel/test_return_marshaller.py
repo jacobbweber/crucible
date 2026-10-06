@@ -1,10 +1,11 @@
 """Unit tests for SubJobMarshaller summary compression and envelope bounds."""
 
+from agent_os.domain.gateway import estimate_tokens
 from agent_os.kernel.return_marshaller import SubJobMarshaller
 
 
 def test_marshaller_summary_clamping() -> None:
-    """Pass a 2,000-char string; verify summary clamped <= 800 chars and token_estimate <= 200."""
+    """Pass a 2,000-char string; verify summary clamped <= 700 chars and token_estimate <= 200."""
     raw_2000 = "A" * 2000
     envelope = SubJobMarshaller.marshal_envelope(
         journey_id="jrn_test_1",
@@ -12,11 +13,11 @@ def test_marshaller_summary_clamping() -> None:
         raw_output=raw_2000,
     )
 
-    assert len(envelope.summary) <= 800
+    assert len(envelope.summary) <= 700
     assert envelope.summary.endswith("...")
-    assert len(envelope.summary) == 800
+    assert len(envelope.summary) == 700
     assert envelope.token_estimate <= 200
-    assert envelope.token_estimate == len(envelope.summary) // 4
+    assert envelope.token_estimate == estimate_tokens(envelope.summary)
 
 
 def test_marshal_envelope_fields() -> None:
@@ -39,4 +40,4 @@ def test_marshal_envelope_fields() -> None:
     assert envelope.artifact_paths == artifacts
     assert envelope.state_mutations == mutations
     assert envelope.duration_ms == 450
-    assert envelope.token_estimate == len(envelope.summary) // 4
+    assert envelope.token_estimate == estimate_tokens(envelope.summary)

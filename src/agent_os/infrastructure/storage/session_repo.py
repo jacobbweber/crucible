@@ -64,6 +64,32 @@ class SessionRepository:
             is_archived=bool(row["is_archived"]),
         )
 
+    def ensure_session(self, session_id: str, title: str | None = None) -> SessionRecord:
+        """Retrieve existing session or create it idempotently if missing."""
+        existing = self.get_session(session_id)
+        if existing is not None:
+            return existing
+
+        now = datetime.now(UTC)
+        now_str = now.isoformat()
+        session_title = title or f"Session: {session_id}"
+        with get_connection(self.db_path) as conn:
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO sessions (
+                    session_id, title, created_at, updated_at, is_archived
+                ) VALUES (?, ?, ?, ?, 0);
+                """,
+                (session_id, session_title, now_str, now_str),
+            )
+        return self.get_session(session_id) or SessionRecord(
+            session_id=session_id,
+            title=session_title,
+            created_at=now,
+            updated_at=now,
+            is_archived=False,
+        )
+
     def append_turn(
         self,
         session_id: str,
