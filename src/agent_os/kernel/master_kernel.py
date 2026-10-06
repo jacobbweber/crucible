@@ -259,9 +259,7 @@ class AgentOSKernel:
         invoker = self.tool_dispatcher[tool_name]
         return await invoker(**params)
 
-    async def stream_user_turn(
-        self, request: UserTurnRequest
-    ) -> AsyncIterator[StreamTurnEvent]:
+    async def stream_user_turn(self, request: UserTurnRequest) -> AsyncIterator[StreamTurnEvent]:
         """Stream an interactive user turn progressively (K1)."""
         facts_payload = self.fact_prefetcher.prefetch_for_turn(request.user_input)
         deferred_block = self.signaler.format_deferred_prompt_block(request.session_id)

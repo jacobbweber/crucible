@@ -1,6 +1,8 @@
 """SQLite connection and schema initialization for the encrypted credential vault."""
 
 import sqlite3
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 VAULT_SCHEMA_SQL = """
@@ -20,12 +22,19 @@ CREATE INDEX IF NOT EXISTS idx_credentials_alias ON credentials(alias);
 """
 
 
-def get_vault_connection(db_path: Path) -> sqlite3.Connection:
-    """Open and configure an SQLite connection for the credential vault."""
+@contextmanager
+def get_vault_connection(db_path: Path) -> Iterator[sqlite3.Connection]:
+    """Open, configure with WAL, and automatically close an SQLite vault connection."""
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON;")
-    return conn
+    conn.execute("PRAGMA journal_mode = WAL;")
+    conn.execute("PRAGMA synchronous = NORMAL;")
+    try:
+        with conn:
+            yield conn
+    finally:
+        conn.close()
 
 
 def init_vault_db(db_path: Path) -> None:

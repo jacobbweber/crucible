@@ -1,6 +1,8 @@
 """SQLite FTS5 database connection and schema initialization for atomic facts."""
 
 import sqlite3
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 FACTS_SCHEMA_SQL = """
@@ -45,12 +47,19 @@ END;
 """
 
 
-def get_facts_connection(db_path: Path) -> sqlite3.Connection:
-    """Open and configure an SQLite database connection for facts."""
+@contextmanager
+def get_facts_connection(db_path: Path) -> Iterator[sqlite3.Connection]:
+    """Open, configure with WAL, and automatically close an SQLite facts connection."""
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON;")
-    return conn
+    conn.execute("PRAGMA journal_mode = WAL;")
+    conn.execute("PRAGMA synchronous = NORMAL;")
+    try:
+        with conn:
+            yield conn
+    finally:
+        conn.close()
 
 
 def init_facts_db(db_path: Path) -> None:

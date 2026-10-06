@@ -48,7 +48,7 @@ def register(reg: CommandRegistry) -> None:
     @reg.register("tool", "Execute a tool via policy+proxy stack: /tool <name> [json-params]")
     async def _tool(ctx: ReplContext, args: list[str]) -> None:
         if not args:
-            raise UsageError("usage: /tool <name> '{\"key\": \"value\"}'")
+            raise UsageError('usage: /tool <name> \'{"key": "value"}\'')
         params = json.loads(" ".join(args[1:])) if len(args) > 1 else {}
         res = await ctx.kernel.execute_tool(args[0], params)
         style = "green" if res.success else "red"

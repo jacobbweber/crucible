@@ -87,8 +87,10 @@ def main(argv: list[str] | None = None) -> None:
     session_id = args.session or runtime.kernel.session_repo.create_session("REPL").session_id
 
     console.info(f"agent-os REPL | data={runtime.data_dir}")
-    console.info(f"model={app_config.vllm_model_name} @ {app_config.vllm_base_url} "
-                 f"thinking={app_config.vllm_enable_thinking} policy={args.policy}")
+    console.info(
+        f"model={app_config.vllm_model_name} @ {app_config.vllm_base_url} "
+        f"thinking={app_config.vllm_enable_thinking} policy={args.policy}"
+    )
     console.info(f"session={session_id} | /help for commands")
     ctx = ReplContext(runtime=runtime, console=console, session_id=session_id)
     asyncio.run(_loop(ctx, build_registry()))

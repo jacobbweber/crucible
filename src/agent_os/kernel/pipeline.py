@@ -30,10 +30,7 @@ class JobAssemblyPipeline:
 
         is_match = False
         top_recipe = None
-        if matches and (
-            matches[0].score >= threshold
-            or (matches[0].score > 0 and matches[0].score >= threshold * 1e-6)
-        ):
+        if matches and matches[0].score >= threshold:
             is_match = True
             top_recipe = matches[0].recipe
 

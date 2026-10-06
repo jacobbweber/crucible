@@ -46,11 +46,12 @@ class VllmAdapter(BaseModelAdapter):
         clamped_max_tokens = min(request.max_tokens, self.config.vllm_context_window)
 
         # G1 headroom: ensure output headroom when reasoning is enabled
-        is_thinking = (
-            request.thinking_level
-            in (ThinkingLevel.LOW, ThinkingLevel.MEDIUM, ThinkingLevel.HIGH, ThinkingLevel.MAX)
-            or (request.thinking_level is None and bool(self.config.vllm_enable_thinking))
-        )
+        is_thinking = request.thinking_level in (
+            ThinkingLevel.LOW,
+            ThinkingLevel.MEDIUM,
+            ThinkingLevel.HIGH,
+            ThinkingLevel.MAX,
+        ) or (request.thinking_level is None and bool(self.config.vllm_enable_thinking))
         if is_thinking and clamped_max_tokens < 1024:
             clamped_max_tokens = min(1024, self.config.vllm_context_window)
 
@@ -138,9 +139,7 @@ class VllmAdapter(BaseModelAdapter):
                         delta_dict = first_choice.get("delta", {})
                         content = delta_dict.get("content", "") or ""
                         reasoning = (
-                            delta_dict.get("reasoning")
-                            or delta_dict.get("reasoning_content")
-                            or ""
+                            delta_dict.get("reasoning") or delta_dict.get("reasoning_content") or ""
                         )
                         finish_reason = first_choice.get("finish_reason")
 

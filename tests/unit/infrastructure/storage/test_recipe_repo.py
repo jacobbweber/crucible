@@ -163,3 +163,38 @@ def test_delete_recipe_clears_fts(tmp_path: Path) -> None:
 
     # FTS index search must return empty list
     assert repo.match_intent("cleanup") == []
+
+
+def test_match_intent_rejects_stop_word_false_positives(tmp_path: Path) -> None:
+    """Verify that unrelated queries sharing only stop words return 0 matches (H1)."""
+    db_file = tmp_path / "recipes.db"
+    repo = RecipeRepository(db_file)
+
+    metadata = RecipeMetadata(
+        recipe_id="recipe_daily_001",
+        name="Daily Summary Report",
+        description="Reads daily notes and creates executive digest",
+        execution_engine="direct",
+        target_model_tier="fast",
+        tags=["summary", "notes"],
+        required_tools=[],
+        timeout_seconds=60,
+    )
+    record = RecipeRecord(
+        metadata=metadata,
+        markdown_path="recipes/daily.md",
+        body="Read notes from the inbox and summarize.",
+    )
+    repo.upsert_recipe(record)
+
+    # Unrelated task sharing only stop words like 'what', 'is', 'the', 'to'
+    unrelated = "What is the best way to slice a 3D model for printing?"
+    matches = repo.match_intent(unrelated)
+    assert matches == []
+
+    # Relevant task matches cleanly with score >= 0.5
+    relevant = "Summarize my daily notes"
+    matches_rel = repo.match_intent(relevant)
+    assert len(matches_rel) == 1
+    assert matches_rel[0].score >= 0.5
+    assert matches_rel[0].recipe.metadata.recipe_id == "recipe_daily_001"

@@ -136,7 +136,7 @@ async def test_vllm_adapter_thinking_level_ladder() -> None:
         return httpx.Response(200, text="data: [DONE]\n\n")
 
     adapter = VllmAdapter(transport=httpx.MockTransport(handler))
-    
+
     from agent_os.domain.gateway import ThinkingLevel
 
     # Test ThinkingLevel.LOW

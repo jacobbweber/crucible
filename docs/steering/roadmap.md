@@ -21,7 +21,7 @@ Per `.agents/rules/live-testing.md`, every live test and smoke verification must
 |---|---|---|---|---|---|
 | 0 | **Test Bench & Wiring** | Composition root, dev REPL, tracing | Bootstrap runtime, multi-target probe, streaming with reasoning capture | C1, M7, G1, G2 | ✅ Complete |
 | 1 | **Gateway & Model Routing** | Model I/O, streaming, canonical message parts | Stream completion, token budgeting, concurrency semaphore, timeout handling | H3, H7, M5, G3, K1 | ✅ Complete |
-| 2 | **Storage & Ground Truth** | 5 SQLite DBs, WAL, FTS5 | Inspect schemas, atomic fact search ranking, recipe match lexical ranking | H1 | ⚪ Pending |
+| 2 | **Storage & Ground Truth** | 5 SQLite DBs, WAL, FTS5 | Inspect schemas, atomic fact search ranking, recipe match lexical ranking | H1 | ✅ Complete |
 | 3 | **Wiki Vault & Graduation** | 4-folder vault, graduation pipeline | Ingestion, path-traversal rejection, safe collision resolution on graduation | H8, L1 | ⚪ Pending |
 | 4 | **Security & Policy Gate** | Hardware-keyed vault, credential proxy, policy gate | Secret storage, `vault://` symbolic alias scrubbing, strict/balanced modes | H4, C3 | ⚪ Pending |
 | 5 | **Front Door & Memory** | Prompt assembly, fact recall, chat memory | Multi-turn chat with active trace, fact recall, sliding window past 15 turns | M2, M5 | ⚪ Pending |
@@ -43,7 +43,7 @@ Severity: 🔴 Critical · 🟠 High · 🟡 Medium · ⚪ Low
 | **C2** | 🔴 | Runner | ReAct workers are never provided tool schemas or action format in prompt. | ⚪ Open (Phase 6) |
 | **C3** | 🔴 | Policy | Policy bypass in workers (`STATE_CHANGE` forced on all tools). | ⚪ Open (Phase 4) |
 | **C4** | 🔴 | Integration | Chat cannot trigger jobs or tools (isolated halves). | ⚪ Open (Phase 10) |
-| **H1** | 🟠 | Dispatch | Recipe lexical matching ORs every word with low threshold fallback. | ⚪ Open (Phase 2/7) |
+| **H1** | 🟠 | Dispatch | Recipe lexical matching ORs every word with low threshold fallback. | ✅ Fixed (Phase 2) |
 | **H2** | 🟠 | Runner | Recipe `execution_engine` ignored; PEV and stategraph unreachable. | ⚪ Open (Phase 6) |
 | **H3** | 🟠 | Gateway | Runner sends `role="tool"` without `tool_call_id`. | ✅ Fixed (Phase 1) |
 | **H4** | 🟠 | Security | Secrets scrubbed from output but not error; MAC-address default key derivation. | 🟨 Partly Fixed (Phase 0) |

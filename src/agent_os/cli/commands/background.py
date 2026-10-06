@@ -12,7 +12,8 @@ _routine_parser.add_argument("routine_id")
 _routine_parser.add_argument("cron", help='e.g. "*/5 * * * *", @hourly, "@interval 60"')
 _routine_parser.add_argument("task", nargs="+")
 _routine_parser.add_argument(
-    "--policy", default="run_once_immediately",
+    "--policy",
+    default="run_once_immediately",
     choices=["run_once_immediately", "skip_to_next", "queue_all"],
 )
 _routine_parser.add_argument("--due-in", type=int, default=None, help="minutes (negative=overdue)")
@@ -32,11 +33,16 @@ def register(reg: CommandRegistry) -> None:
                 if ns.due_in is not None
                 else compute_next_run(ns.cron, now)
             )
-            sched.register_routine(ScheduledRoutine(
-                routine_id=ns.routine_id, name=ns.routine_id, cron_expression=ns.cron,
-                task_payload=" ".join(ns.task), catch_up_policy=ns.policy,
-                next_run_at=next_run,
-            ))
+            sched.register_routine(
+                ScheduledRoutine(
+                    routine_id=ns.routine_id,
+                    name=ns.routine_id,
+                    cron_expression=ns.cron,
+                    task_payload=" ".join(ns.task),
+                    catch_up_policy=ns.policy,
+                    next_run_at=next_run,
+                )
+            )
             ctx.console.ok(f"registered {ns.routine_id}, next_run_at={next_run.isoformat()}")
             return
         for r in sched.list_routines():

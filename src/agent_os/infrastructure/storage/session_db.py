@@ -1,6 +1,8 @@
 """SQLite connection and schema initialization for session and journey storage."""
 
 import sqlite3
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 SCHEMA_SQL = """
@@ -54,12 +56,19 @@ CREATE INDEX IF NOT EXISTS idx_journey_steps_journey_step ON journey_steps(journ
 """
 
 
-def get_connection(db_path: Path) -> sqlite3.Connection:
-    """Open and configure an SQLite database connection with foreign key enforcement."""
+@contextmanager
+def get_connection(db_path: Path) -> Iterator[sqlite3.Connection]:
+    """Open, configure with WAL, and automatically close an SQLite session connection."""
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON;")
-    return conn
+    conn.execute("PRAGMA journal_mode = WAL;")
+    conn.execute("PRAGMA synchronous = NORMAL;")
+    try:
+        with conn:
+            yield conn
+    finally:
+        conn.close()
 
 
 def init_db(db_path: Path) -> None:

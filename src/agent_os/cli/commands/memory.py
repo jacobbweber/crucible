@@ -75,8 +75,10 @@ def register(reg: CommandRegistry) -> None:
         elif sub == "list":
             for r in repo.list_recipes():
                 m = r.metadata
-                ctx.console.write(f"{m.recipe_id}  {m.name}  engine={m.execution_engine} "
-                                  f"tags={m.tags} tools={m.required_tools}")
+                ctx.console.write(
+                    f"{m.recipe_id}  {m.name}  engine={m.execution_engine} "
+                    f"tags={m.tags} tools={m.required_tools}"
+                )
         elif sub == "match":
             threshold = ctx.kernel.dispatcher.threshold
             ctx.console.dim(f"dispatcher threshold={threshold} (fallback accepts score>0)")

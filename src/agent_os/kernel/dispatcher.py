@@ -161,11 +161,7 @@ class ZeroCatalogDispatcher:
         matches = self.recipe_repo.match_intent(task, limit=1)
 
         # Stage 1: Match Intent via SQLite FTS5 Index
-        # Accounts for SQLite FTS5 IDF clamping (~1e-6) on small collections
-        if matches and (
-            matches[0].score >= self.threshold
-            or (matches[0].score > 0 and matches[0].score >= self.threshold * 1e-6)
-        ):
+        if matches and matches[0].score >= self.threshold:
             top_match = matches[0]
             recipe = top_match.recipe
             packet = CompiledExecutionPacket(

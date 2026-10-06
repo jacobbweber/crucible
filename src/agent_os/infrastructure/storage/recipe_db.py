@@ -1,6 +1,8 @@
 """SQLite FTS5 database connection and schema initialization for execution recipes."""
 
 import sqlite3
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 RECIPES_SCHEMA_SQL = """
@@ -75,12 +77,19 @@ END;
 """
 
 
-def get_recipe_connection(db_path: Path) -> sqlite3.Connection:
-    """Open and configure an SQLite database connection for recipes."""
+@contextmanager
+def get_recipe_connection(db_path: Path) -> Iterator[sqlite3.Connection]:
+    """Open, configure with WAL, and automatically close an SQLite recipe connection."""
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON;")
-    return conn
+    conn.execute("PRAGMA journal_mode = WAL;")
+    conn.execute("PRAGMA synchronous = NORMAL;")
+    try:
+        with conn:
+            yield conn
+    finally:
+        conn.close()
 
 
 def init_recipe_db(db_path: Path) -> None:
