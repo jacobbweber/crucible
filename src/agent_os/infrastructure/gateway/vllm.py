@@ -29,13 +29,19 @@ class VllmAdapter(BaseModelAdapter):
         url = f"{self.config.vllm_base_url.rstrip('/')}/chat/completions"
         clamped_max_tokens = min(request.max_tokens, self.config.vllm_context_window)
 
-        payload = {
+        payload: dict[str, object] = {
             "model": request.model or self.config.vllm_model_name,
             "messages": [msg.model_dump(exclude_none=True) for msg in request.messages],
             "temperature": request.temperature,
             "max_tokens": clamped_max_tokens,
             "stream": True,
         }
+        thinking = self.config.vllm_enable_thinking
+        if thinking is not None:
+            # vLLM chat templates read chat_template_kwargs; Ollama only honours reasoning_effort.
+            payload["chat_template_kwargs"] = {"enable_thinking": thinking}
+            if not thinking:
+                payload["reasoning_effort"] = "none"
         headers = {
             "Authorization": f"Bearer {self.config.vllm_api_key}",
             "Content-Type": "application/json",
@@ -80,12 +86,18 @@ class VllmAdapter(BaseModelAdapter):
                         first_choice = choices[0]
                         delta_dict = first_choice.get("delta", {})
                         content = delta_dict.get("content", "") or ""
+                        reasoning = (
+                            delta_dict.get("reasoning")
+                            or delta_dict.get("reasoning_content")
+                            or ""
+                        )
                         finish_reason = first_choice.get("finish_reason")
 
-                        if content or finish_reason is not None:
+                        if content or reasoning or finish_reason is not None:
                             yield StreamChunk(
                                 delta=content,
                                 finish_reason=finish_reason,
+                                reasoning=reasoning,
                             )
         except httpx.TimeoutException as exc:
             raise RuntimeError(f"vLLM request timed out: {exc}") from exc

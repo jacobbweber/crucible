@@ -98,3 +98,29 @@ async def test_vllm_adapter_connection_timeout() -> None:
     with pytest.raises(RuntimeError, match="timed out"):
         async for _ in adapter.complete(request):
             pass
+
+
+@pytest.mark.asyncio
+async def test_vllm_adapter_separates_reasoning_and_sends_thinking_toggle() -> None:
+    """Verify reasoning deltas stay out of content and enable_thinking is forwarded."""
+    captured: dict[str, Any] = {}
+    sse_data = (
+        'data: {"choices": [{"delta": {"reasoning": "Let me think"}}]}\n\n'
+        'data: {"choices": [{"delta": {"content": "Hi"}, "finish_reason": "stop"}]}\n\n'
+        "data: [DONE]\n\n"
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.update(json.loads(request.content.decode("utf-8")))
+        return httpx.Response(200, text=sse_data)
+
+    adapter = VllmAdapter(
+        config=AppConfig(vllm_enable_thinking=False), transport=httpx.MockTransport(handler)
+    )
+    request = CompletionRequest(messages=[ChatMessage(role="user", content="Hi")])
+    chunks = [c async for c in adapter.complete(request)]
+
+    assert captured["chat_template_kwargs"] == {"enable_thinking": False}
+    assert captured["reasoning_effort"] == "none"
+    assert "".join(c.delta for c in chunks) == "Hi"
+    assert "".join(c.reasoning for c in chunks) == "Let me think"

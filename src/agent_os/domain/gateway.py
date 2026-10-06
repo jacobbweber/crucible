@@ -28,3 +28,4 @@ class StreamChunk(BaseModel):
 
     delta: str
     finish_reason: str | None = None
+    reasoning: str = ""
