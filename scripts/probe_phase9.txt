@@ -1,0 +1,5 @@
+/tools
+/tool education_record_grade '{"card_id": "card_cap_theorem", "grade": 5, "reviewed_at": "2026-10-06T12:00:00Z"}'
+/tool education_advance_stage '{"topic_id": "k8s_internals", "target_stage": "invalid_stage", "rationale": "testing"}'
+How does spaced repetition SM-2 calculate review intervals? Keep your answer brief.
+/quit

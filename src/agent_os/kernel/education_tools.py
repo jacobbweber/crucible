@@ -10,6 +10,7 @@ from agent_os.domain.tools import (
     ToolParameterSchema,
 )
 from agent_os.infrastructure.storage.education_repo import EducationRepository
+from agent_os.kernel.pedagogical import STAGE_PROGRESSION, PedagogicalOrchestrator
 from agent_os.kernel.srs_engine import SRSEngine
 
 
@@ -87,15 +88,38 @@ class EducationToolSuite:
         self,
         card_id: str,
         grade: int,
-        reviewed_at: datetime | None = None,
+        reviewed_at: datetime | str | None = None,
     ) -> ToolExecutionResult:
-        """Validate grade, calculate SM-2 intervals, update card, and log review event."""
+        """Validate grade, calculate SM-2 intervals, update card, and log review event (M3)."""
         if grade < 0 or grade > 5:
             return ToolExecutionResult(
                 tool_name="education_record_grade",
                 success=False,
                 output="",
                 error=f"Grade must be between 0 and 5, got {grade}",
+            )
+
+        review_time: datetime
+        if reviewed_at is None:
+            review_time = datetime.now(UTC)
+        elif isinstance(reviewed_at, datetime):
+            review_time = reviewed_at
+        elif isinstance(reviewed_at, str):
+            try:
+                review_time = datetime.fromisoformat(reviewed_at.replace("Z", "+00:00"))
+            except Exception as e:
+                return ToolExecutionResult(
+                    tool_name="education_record_grade",
+                    success=False,
+                    output="",
+                    error=f"Invalid ISO timestamp for reviewed_at '{reviewed_at}': {e}",
+                )
+        else:
+            return ToolExecutionResult(
+                tool_name="education_record_grade",
+                success=False,
+                output="",
+                error=f"Unsupported type for reviewed_at: {type(reviewed_at).__name__}",
             )
 
         card = self.repo.get_card(card_id)
@@ -114,7 +138,6 @@ class EducationToolSuite:
             ease_factor=card.ease_factor,
         )
 
-        review_time = reviewed_at if reviewed_at is not None else datetime.now(UTC)
         self.repo.record_review(
             card_id=card_id,
             grade=grade,
@@ -124,10 +147,30 @@ class EducationToolSuite:
             reviewed_at=review_time,
         )
 
+        # Update topic mastery score and evaluate pedagogical advancement readiness (M3)
+        extra = ""
+        topic = self.repo.get_topic(card.topic_id)
+        if topic is not None:
+            consecutive_high, mastery = self.repo.get_topic_review_stats(topic.topic_id)
+            topic.mastery_score = mastery
+            topic.updated_at = datetime.now(UTC)
+            self.repo.upsert_topic(topic)
+
+            next_stage, advanced = PedagogicalOrchestrator.evaluate_stage_transition(
+                topic.current_stage, consecutive_high, mastery
+            )
+            if advanced:
+                extra = (
+                    f" Topic '{topic.title}' is eligible to advance to {next_stage} "
+                    f"(mastery: {mastery}%, consecutive high: {consecutive_high})."
+                )
+            else:
+                extra = f" Topic '{topic.title}' mastery: {mastery}%."
+
         return ToolExecutionResult(
             tool_name="education_record_grade",
             success=True,
-            output=f"Recorded grade {grade}. New interval: {new_interval} days.",
+            output=f"Recorded grade {grade}. New interval: {new_interval} days.{extra}",
         )
 
     def education_advance_stage(
@@ -136,7 +179,7 @@ class EducationToolSuite:
         target_stage: PedagogicalStage,
         rationale: str,
     ) -> ToolExecutionResult:
-        """Advance curriculum topic to target pedagogical stage."""
+        """Advance topic to target pedagogical stage with validation and rubric guidance."""
         topic = self.repo.get_topic(topic_id)
         if topic is None:
             return ToolExecutionResult(
@@ -146,12 +189,32 @@ class EducationToolSuite:
                 error=f"Topic {topic_id} not found",
             )
 
+        if target_stage not in STAGE_PROGRESSION:
+            return ToolExecutionResult(
+                tool_name="education_advance_stage",
+                success=False,
+                output="",
+                error=f"Invalid target stage '{target_stage}'. Valid stages: {STAGE_PROGRESSION}",
+            )
+
+        if topic.current_stage == target_stage:
+            return ToolExecutionResult(
+                tool_name="education_advance_stage",
+                success=False,
+                output="",
+                error=f"Topic '{topic.title}' is already at {target_stage}",
+            )
+
         topic.current_stage = target_stage
         topic.updated_at = datetime.now(UTC)
         self.repo.upsert_topic(topic)
+        rubric = PedagogicalOrchestrator.get_stage_rubric(target_stage)
 
         return ToolExecutionResult(
             tool_name="education_advance_stage",
             success=True,
-            output=f"Advanced {topic.title} to {target_stage}. Rationale: {rationale}",
+            output=(
+                f"Advanced {topic.title} to {target_stage}. "
+                f"Rubric: {rubric} Rationale: {rationale}"
+            ),
         )

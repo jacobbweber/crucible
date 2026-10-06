@@ -172,9 +172,14 @@ class EducationRepository:
         new_interval: int,
         new_repetitions: int,
         new_ease_factor: float,
-        reviewed_at: datetime,
+        reviewed_at: datetime | str,
     ) -> ReviewLog:
         """Record review outcome, update card intervals and timestamps, and write audit log."""
+        actual_reviewed_at = (
+            datetime.fromisoformat(reviewed_at.replace("Z", "+00:00"))
+            if isinstance(reviewed_at, str)
+            else reviewed_at
+        )
         with get_education_connection(self.db_path) as conn:
             cursor = conn.execute(
                 "SELECT interval_days FROM review_cards WHERE card_id = ?;",
@@ -185,7 +190,7 @@ class EducationRepository:
                 raise ValueError(f"Card not found: {card_id}")
             old_interval = int(row["interval_days"])
 
-            new_due_date = reviewed_at + timedelta(days=new_interval)
+            new_due_date = actual_reviewed_at + timedelta(days=new_interval)
             conn.execute(
                 """
                 UPDATE review_cards
@@ -200,7 +205,7 @@ class EducationRepository:
                     new_repetitions,
                     new_interval,
                     new_ease_factor,
-                    reviewed_at.isoformat(),
+                    actual_reviewed_at.isoformat(),
                     new_due_date.isoformat(),
                     card_id,
                 ),
@@ -218,7 +223,7 @@ class EducationRepository:
                     log_id,
                     card_id,
                     grade,
-                    reviewed_at.isoformat(),
+                    actual_reviewed_at.isoformat(),
                     old_interval,
                     new_interval,
                 ),
@@ -228,7 +233,7 @@ class EducationRepository:
             log_id=log_id,
             card_id=card_id,
             grade=grade,
-            reviewed_at=reviewed_at,
+            reviewed_at=actual_reviewed_at,
             old_interval=old_interval,
             new_interval=new_interval,
         )
@@ -257,3 +262,34 @@ class EducationRepository:
             )
             for r in rows
         ]
+
+    def get_topic_review_stats(self, topic_id: str) -> tuple[int, float]:
+        """Calculate consecutive high grades (grade >= 4) and mastery score (0-100)."""
+        with get_education_connection(self.db_path) as conn:
+            cursor = conn.execute(
+                """
+                SELECT l.grade
+                FROM review_logs l
+                JOIN review_cards c ON l.card_id = c.card_id
+                WHERE c.topic_id = ?
+                ORDER BY l.reviewed_at DESC;
+                """,
+                (topic_id,),
+            )
+            rows = cursor.fetchall()
+
+        if not rows:
+            return 0, 0.0
+
+        grades = [int(r["grade"]) for r in rows]
+        consecutive_high = 0
+        for g in grades:
+            if g >= 4:
+                consecutive_high += 1
+            else:
+                break
+
+        avg_grade = sum(grades) / len(grades)
+        mastery_score = round((avg_grade / 5.0) * 100.0, 1)
+        return consecutive_high, mastery_score
+
