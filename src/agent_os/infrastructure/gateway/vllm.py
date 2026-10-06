@@ -58,9 +58,9 @@ class VllmAdapter(BaseModelAdapter):
             ThinkingLevel.MEDIUM,
             ThinkingLevel.HIGH,
             ThinkingLevel.MAX,
-        ) or (request.thinking_level is None and bool(self.config.vllm_enable_thinking))
-        if is_thinking and clamped_max_tokens < 1024:
-            clamped_max_tokens = min(1024, available_output)
+        ) or (request.thinking_level is None and self.config.vllm_enable_thinking is not False)
+        if is_thinking and clamped_max_tokens < 2048:
+            clamped_max_tokens = min(2048, available_output)
 
         # Format messages and resolve H3 (tool messages require tool_call_id)
         formatted_messages: list[dict[str, Any]] = []

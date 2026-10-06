@@ -1,6 +1,7 @@
 """Domain models for execution policy, approval tiers, and tool call requests."""
 
 from enum import StrEnum
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -34,7 +35,7 @@ class ToolCallRequest(BaseModel):
 
     tool_name: str
     action_tier: ActionTier = ActionTier.DESTRUCTIVE
-    parameters: dict[str, str | int | float | bool | None] = Field(default_factory=dict)
+    parameters: dict[str, Any] = Field(default_factory=dict)
     origin_session_id: str | None = None
     origin_journey_id: str | None = None
 

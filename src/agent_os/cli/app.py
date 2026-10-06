@@ -34,6 +34,14 @@ async def _chat_turn(ctx: ReplContext, text: str) -> None:
                 sys.stdout.write(event.delta)
                 sys.stdout.flush()
             response_chunks.append(event.delta)
+        elif event.event_type == "job_dispatched":
+            job = event.dispatched_job
+            job_desc = getattr(job, "task", "job") if job else "job"
+            ctx.console.info(f"\n⚡ Dispatched background job: {job_desc}")
+        elif event.event_type == "tool_executed":
+            tool_res = event.tool_result
+            tool_name = getattr(tool_res, "tool_name", "tool") if tool_res else "tool"
+            ctx.console.info(f"\n🔧 Tool executed: {tool_name}")
         elif event.event_type == "error":
             ctx.console.error(f"\nturn error: {event.error_message}")
     if response_chunks:

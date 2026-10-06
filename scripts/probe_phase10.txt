@@ -1,0 +1,5 @@
+/tools
+/tool wiki_write '{"path": "01_Notes/system_architecture.md", "title": "System Architecture", "category": "notes", "tags": ["architecture", "design"], "body": "Agent-OS uses context-isolated sandboxes and relational SQLite stores with WAL mode enabled.", "overwrite": true}'
+Please search the wiki for any notes regarding system architecture or design principles.
+What did the background search find?
+/quit

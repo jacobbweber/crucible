@@ -197,7 +197,7 @@ async def test_vllm_adapter_normalizes_tool_message_id() -> None:
 
 @pytest.mark.asyncio
 async def test_vllm_adapter_reserves_thinking_headroom() -> None:
-    """Verify max_tokens expands to at least 1024 when thinking is active (G1)."""
+    """Verify max_tokens expands to at least 2048 when thinking is active (G1)."""
     captured: dict[str, Any] = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -216,4 +216,4 @@ async def test_vllm_adapter_reserves_thinking_headroom() -> None:
         max_tokens=64,  # Intentionally small
     )
     _ = [c async for c in adapter.complete(req)]
-    assert captured["max_tokens"] == 1024
+    assert captured["max_tokens"] == 2048

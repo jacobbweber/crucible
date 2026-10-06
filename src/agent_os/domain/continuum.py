@@ -1,6 +1,6 @@
 """Domain models for companion chat continuum, session state, and streaming turn events."""
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -10,12 +10,16 @@ from agent_os.domain.session import TurnRecord
 class StreamTurnEvent(BaseModel):
     """Event emitted during interactive streaming turn execution."""
 
-    event_type: Literal["delta", "completed", "error", "thinking"]
+    event_type: Literal[
+        "delta", "completed", "error", "thinking", "job_dispatched", "tool_executed"
+    ]
     delta: str = ""
     reasoning: str = ""
     finish_reason: str | None = None
     turn: TurnRecord | None = None
     error_message: str | None = None
+    dispatched_job: Any | None = None
+    tool_result: Any | None = None
 
 
 class ChatSessionState(BaseModel):

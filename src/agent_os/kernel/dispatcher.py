@@ -84,6 +84,13 @@ class ZeroCatalogDispatcher:
                 if name_str in allowed_tools and name_str not in selected_tools:
                     selected_tools.append(name_str)
 
+        if "wiki_search" in selected_tools and "wiki_read" in allowed_tools:
+            if "wiki_read" not in selected_tools:
+                selected_tools.append("wiki_read")
+        if "wiki_read" in selected_tools and "wiki_search" in allowed_tools:
+            if "wiki_search" not in selected_tools:
+                selected_tools.append("wiki_search")
+
         return brief, selected_tools
 
     async def _execute_ephemeral_stage(
@@ -98,6 +105,7 @@ class ZeroCatalogDispatcher:
         prompt_content = (
             "You are an expert task planner. Given a user task and available tools, emit a JSON "
             "object specifying the TaskBrief and selecting appropriate tools.\n"
+            "Select all necessary tools to search, read, or inspect relevant resources.\n"
             "JSON Schema:\n"
             "{\n"
             '  "role_anchor": "<string>",\n'

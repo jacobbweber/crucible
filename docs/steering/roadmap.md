@@ -29,7 +29,7 @@ Per `.agents/rules/live-testing.md`, every live test and smoke verification must
 | 7 | **Dispatch & Pipeline** | Recipe vs ephemeral task routing | Near-miss recipe matching, ephemeral brief synthesis, graduation evaluation | H1, H2 | ✅ Complete |
 | 8 | **Signaling & Scheduler** | Background routines, session isolation | Multi-session nudge isolation, persistence across restarts, routine catch-up | H5, H6, M1 | ✅ Complete |
 | 9 | **Education Engine** | SM-2 spaced repetition, pedagogical stages | Card review intervals, skill advancement via tool invocation | M3 | ✅ Complete |
-| 10 | **End-to-End System** | Complete user day-in-the-life | Complex conversational task dispatching background worker, ambient nudge return | C4 | ⚪ Pending |
+| 10 | **End-to-End System** | Complete user day-in-the-life | Complex conversational task dispatching background worker, ambient nudge return | C4 | ✅ Complete |
 
 ---
 
@@ -42,7 +42,7 @@ Severity: 🔴 Critical · 🟠 High · 🟡 Medium · ⚪ Low
 | **C1** | 🔴 | Bootstrap | No composition root or entry point. | ✅ Fixed (Phase 0) |
 | **C2** | 🔴 | Runner | ReAct workers are never provided tool schemas or action format in prompt. | ✅ Fixed (Phase 6) |
 | **C3** | 🔴 | Policy | Policy bypass in workers (`STATE_CHANGE` forced on all tools). | ✅ Fixed (Phase 4) |
-| **C4** | 🔴 | Integration | Chat cannot trigger jobs or tools (isolated halves). | ⚪ Open (Phase 10) |
+| **C4** | 🔴 | Integration | Chat cannot trigger jobs or tools (isolated halves). | ✅ Fixed (Phase 10) |
 | **H1** | 🟠 | Dispatch | Recipe lexical matching ORs every word with low threshold fallback. | ✅ Fixed (Phase 2) |
 | **H2** | 🟠 | Runner | Recipe `execution_engine` ignored; PEV and stategraph unreachable. | ✅ Fixed (Phase 6) |
 | **H3** | 🟠 | Gateway | Runner sends `role="tool"` without `tool_call_id`. | ✅ Fixed (Phase 1) |

@@ -2,6 +2,7 @@
 
 from datetime import UTC, datetime
 from enum import StrEnum
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -37,7 +38,7 @@ class StoredCredential(BaseModel):
 class ResolvedParameters(BaseModel):
     """Parameters with vault aliases resolved to raw secrets, tracking aliases and secrets."""
 
-    resolved_params: dict[str, str | int | float | bool | None]
+    resolved_params: dict[str, Any]
     resolved_aliases: list[str] = Field(default_factory=list)
     secrets_to_scrub: list[str] = Field(default_factory=list)
 

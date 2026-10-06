@@ -30,7 +30,7 @@ class RunnerExecutionRequest(BaseModel):
     task: str
     modality: ExecutionModality = "react"
     system_prompt: str = ""
-    max_turns: int = Field(default=10, ge=1, le=50)
+    max_turns: int = Field(default=15, ge=1, le=50)
     timeout_seconds: int = Field(default=300, ge=10)
     tools: list[ToolDefinition] = Field(default_factory=list)
 

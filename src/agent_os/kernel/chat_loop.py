@@ -1,6 +1,9 @@
 """Interactive companion session orchestrator managing turns and context sliding window."""
 
-from collections.abc import AsyncIterator
+import json
+import re
+from collections.abc import AsyncIterator, Callable, Coroutine
+from typing import Any
 
 from agent_os.domain.companion import CompanionConfig
 from agent_os.domain.continuum import ChatSessionState, StreamTurnEvent
@@ -9,6 +12,67 @@ from agent_os.domain.session import TurnRecord
 from agent_os.infrastructure.gateway.base import BaseModelAdapter
 from agent_os.infrastructure.storage.session_repo import SessionRepository
 from agent_os.kernel.prompt_assembler import PromptAssembler
+
+
+def extract_dispatch_directives(text: str) -> list[str]:
+    """Extract [DISPATCH: <task>] directives from companion response."""
+    matches = re.findall(r"\[DISPATCH:\s*(.+?)\]", text, flags=re.DOTALL | re.IGNORECASE)
+    return [m.strip() for m in matches if m.strip()]
+
+
+def extract_tool_directives(text: str) -> list[tuple[str, dict[str, Any]]]:
+    """Extract [TOOL: <name> <json_params>] directives, balancing JSON brackets/braces."""
+    results: list[tuple[str, dict[str, Any]]] = []
+    pattern = re.compile(r"\[TOOL:\s*([a-zA-Z0-9_\-]+)", re.IGNORECASE)
+    pos = 0
+    while True:
+        m = pattern.search(text, pos)
+        if not m:
+            break
+        tool_name = m.group(1).strip()
+        pos = m.end()
+        params: dict[str, Any] = {}
+        while pos < len(text) and text[pos].isspace():
+            pos += 1
+        if pos < len(text) and text[pos] == "{":
+            depth = 0
+            start_brace = pos
+            in_quote = False
+            escape = False
+            end_brace = -1
+            for i in range(start_brace, len(text)):
+                ch = text[i]
+                if escape:
+                    escape = False
+                    continue
+                if ch == "\\":
+                    escape = True
+                    continue
+                if ch == '"':
+                    in_quote = not in_quote
+                    continue
+                if not in_quote:
+                    if ch == "{":
+                        depth += 1
+                    elif ch == "}":
+                        depth -= 1
+                        if depth == 0:
+                            end_brace = i
+                            break
+            if end_brace != -1:
+                json_str = text[start_brace : end_brace + 1]
+                try:
+                    parsed = json.loads(json_str)
+                    if isinstance(parsed, dict):
+                        params = parsed
+                except Exception:
+                    pass
+                pos = end_brace + 1
+        closing = text.find("]", pos)
+        if closing != -1:
+            pos = closing + 1
+        results.append((tool_name, params))
+    return results
 
 
 class CompanionChatLoop:
@@ -24,6 +88,12 @@ class CompanionChatLoop:
         target_model: str | None = None,
         context_window: int = 8192,
         reserve_output_tokens: int = 1024,
+        job_dispatcher: (
+            Callable[[str, str], Coroutine[Any, Any, Any]] | None
+        ) = None,
+        tool_dispatcher: (
+            Callable[[str, dict[str, Any] | None], Coroutine[Any, Any, Any]] | None
+        ) = None,
     ) -> None:
         self.session_id = session_id
         self.session_repo = session_repo
@@ -35,6 +105,8 @@ class CompanionChatLoop:
         self.target_model = target_model
         self.context_window = context_window
         self.reserve_output_tokens = reserve_output_tokens
+        self.job_dispatcher = job_dispatcher
+        self.tool_dispatcher = tool_dispatcher
         self.assembler = PromptAssembler(config)
 
     def get_state(self) -> ChatSessionState:
@@ -147,6 +219,37 @@ class CompanionChatLoop:
                 content=accumulated_text,
                 token_count=estimate_tokens(accumulated_text),
             )
+
+            if self.job_dispatcher:
+                tasks = extract_dispatch_directives(accumulated_text)
+                for task in tasks:
+                    try:
+                        job_res = await self.job_dispatcher(self.session_id, task)
+                        yield StreamTurnEvent(
+                            event_type="job_dispatched",
+                            dispatched_job=job_res,
+                        )
+                    except Exception as exc:
+                        yield StreamTurnEvent(
+                            event_type="error",
+                            error_message=f"Job dispatch error: {exc}",
+                        )
+
+            if self.tool_dispatcher:
+                tools = extract_tool_directives(accumulated_text)
+                for tool_name, params in tools:
+                    try:
+                        tool_res = await self.tool_dispatcher(tool_name, params)
+                        yield StreamTurnEvent(
+                            event_type="tool_executed",
+                            tool_result=tool_res,
+                        )
+                    except Exception as exc:
+                        yield StreamTurnEvent(
+                            event_type="error",
+                            error_message=f"Tool execution error: {exc}",
+                        )
+
             yield StreamTurnEvent(
                 event_type="completed",
                 turn=assistant_turn,

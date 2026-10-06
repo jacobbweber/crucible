@@ -7,7 +7,6 @@ from typing import Any
 
 from agent_os.domain.companion import CompanionConfig
 from agent_os.domain.continuum import StreamTurnEvent
-from agent_os.domain.dispatch import DispatchResult
 from agent_os.domain.kernel import KernelConfig, TurnResponse, UserTurnRequest
 from agent_os.domain.pipeline import JobAssemblyRequest, PipelineExecutionResult
 from agent_os.domain.policy import (
@@ -37,42 +36,10 @@ from agent_os.kernel.policy_gate import ToolPolicyGate
 from agent_os.kernel.recipe_chamber import RecipeChamber
 from agent_os.kernel.runner import NativeRunner
 from agent_os.kernel.scheduler import EmbeddedSchedulerDaemon
+from agent_os.kernel.scheduler_dispatcher import SchedulerSignalingDispatcher
 from agent_os.kernel.signaling import CompletionSignaler
 from agent_os.kernel.srs_engine import SRSEngine
 from agent_os.kernel.wiki_tools import WikiToolSuite
-
-
-class _SchedulerSignalingDispatcher:
-    """Wraps ZeroCatalogDispatcher for background routines to signal completion."""
-
-    def __init__(
-        self,
-        dispatcher: ZeroCatalogDispatcher,
-        signaler: CompletionSignaler,
-        session_repo: SessionRepository,
-        tools: dict[str, Any] | None = None,
-    ) -> None:
-        self._dispatcher = dispatcher
-        self._signaler = signaler
-        self._session_repo = session_repo
-        self._tools = tools or {}
-
-    async def dispatch_task(
-        self,
-        session_id: str,
-        task: str,
-        available_tools: list[str] | None = None,
-    ) -> DispatchResult:
-        self._session_repo.ensure_session(session_id, title=f"System Session: {session_id}")
-        tools_list = available_tools if available_tools is not None else list(self._tools.keys())
-        res = await self._dispatcher.dispatch_task(
-            session_id, task, available_tools=tools_list
-        )
-        self._signaler.signal_completion(session_id, res.envelope)
-        return res
-
-    def __getattr__(self, name: str) -> Any:
-        return getattr(self._dispatcher, name)
 
 
 class AgentOSKernel:
@@ -148,7 +115,7 @@ class AgentOSKernel:
         )
 
         # Scheduler with completion signaling and persistence (H6)
-        signaling_sched_dispatcher = _SchedulerSignalingDispatcher(
+        signaling_sched_dispatcher = SchedulerSignalingDispatcher(
             dispatcher=self.dispatcher,
             signaler=self.signaler,
             session_repo=self.session_repo,
@@ -165,15 +132,11 @@ class AgentOSKernel:
 
     def _register_default_tools(self) -> None:
         """Register built-in wiki and education tools."""
-        for defn in self.wiki_tools.get_definitions():
-            fn = getattr(self.wiki_tools, defn.name, None)
-            if fn:
-                self.register_tool(defn.name, fn, defn.action_tier, definition=defn)
-
-        for defn in self.education_tools.get_definitions():
-            fn = getattr(self.education_tools, defn.name, None)
-            if fn:
-                self.register_tool(defn.name, fn, defn.action_tier, definition=defn)
+        for suite in (self.wiki_tools, self.education_tools):
+            for defn in suite.get_definitions():
+                fn = getattr(suite, defn.name, None)
+                if fn:
+                    self.register_tool(defn.name, fn, defn.action_tier, definition=defn)
 
     def register_tool(
         self,
@@ -185,14 +148,9 @@ class AgentOSKernel:
         """Register a new tool into the kernel execution and dispatch registry."""
         self.tools[name] = fn
         self._tool_tiers[name] = action_tier
-        if definition is not None:
-            self._tool_definitions[name] = definition
-        else:
-            self._tool_definitions[name] = ToolDefinition(
-                name=name,
-                description=f"Tool: {name}",
-                action_tier=action_tier,
-            )
+        self._tool_definitions[name] = definition or ToolDefinition(
+            name=name, description=f"Tool: {name}", action_tier=action_tier
+        )
         self.tool_dispatcher[name] = self._make_tool_invoker(name, fn)
 
     def _make_tool_invoker(
@@ -204,41 +162,29 @@ class AgentOSKernel:
             resolved = self.credential_proxy.resolve_parameters(kwargs)
             try:
                 res = fn(**resolved.resolved_params)
-                if inspect.iscoroutine(res):
-                    tool_res: ToolExecutionResult = await res
-                elif isinstance(res, ToolExecutionResult):
-                    tool_res = res
-                else:
+                tool_res = await res if inspect.iscoroutine(res) else res
+                if not isinstance(tool_res, ToolExecutionResult):
                     tool_res = ToolExecutionResult(
-                        tool_name=tool_name,
-                        success=True,
-                        output=str(res),
+                        tool_name=tool_name, success=True, output=str(res)
                     )
             except Exception as e:
                 tool_res = ToolExecutionResult(
-                    tool_name=tool_name,
-                    success=False,
-                    output="",
-                    error=str(e),
+                    tool_name=tool_name, success=False, output="", error=str(e)
                 )
 
-            clean_output = tool_res.output
-            clean_error = tool_res.error
+            output, error = tool_res.output, tool_res.error
             if resolved.secrets_to_scrub:
-                if clean_output:
-                    clean_output = self.credential_proxy.scrub_text(
-                        clean_output, resolved.secrets_to_scrub
-                    ).sanitized_text
-                if clean_error:
-                    clean_error = self.credential_proxy.scrub_text(
-                        clean_error, resolved.secrets_to_scrub
-                    ).sanitized_text
+                secrets = resolved.secrets_to_scrub
+                if output:
+                    output = self.credential_proxy.scrub_text(output, secrets).sanitized_text
+                if error:
+                    error = self.credential_proxy.scrub_text(error, secrets).sanitized_text
 
             return ToolExecutionResult(
                 tool_name=tool_name,
                 success=tool_res.success,
-                output=clean_output,
-                error=clean_error,
+                output=output,
+                error=error,
             )
 
         return _invoker
@@ -288,6 +234,8 @@ class AgentOSKernel:
             config=CompanionConfig(name=self.config.companion_name),
             context_window=self.config.context_window,
             reserve_output_tokens=self.config.reserve_output_tokens,
+            job_dispatcher=self.execute_job,
+            tool_dispatcher=self.execute_tool,
         )
         async for event in chat_loop.execute_turn(
             user_input=request.user_input,
@@ -301,6 +249,7 @@ class AgentOSKernel:
         facts_payload = self.fact_prefetcher.prefetch_for_turn(request.user_input)
         events: list[StreamTurnEvent] = []
         response_parts: list[str] = []
+        dispatched_subjobs: list[PipelineExecutionResult] = []
         final_turn_content = ""
         last_error = ""
 
@@ -308,6 +257,9 @@ class AgentOSKernel:
             events.append(event)
             if event.event_type == "delta":
                 response_parts.append(event.delta)
+            elif event.event_type == "job_dispatched" and event.dispatched_job:
+                if isinstance(event.dispatched_job, PipelineExecutionResult):
+                    dispatched_subjobs.append(event.dispatched_job)
             elif event.event_type == "completed" and event.turn:
                 final_turn_content = event.turn.content
             elif event.event_type == "error":
@@ -323,6 +275,7 @@ class AgentOSKernel:
             response_text=response_text,
             stream_events=events,
             recalled_facts_count=facts_payload.recalled_count,
+            dispatched_subjobs=dispatched_subjobs,
             ambient_nudges=nudges,
         )
 

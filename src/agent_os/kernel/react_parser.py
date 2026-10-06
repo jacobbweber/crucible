@@ -100,6 +100,10 @@ def parse_react_response(
                     and len(data["action"].strip()) > 0
                 ):
                     tool_name = data["action"].strip()
+                    if tool_name.lower() in (
+                        "none", "null", "finish", "done", "stop", "final_answer", "no_tool"
+                    ):
+                        return None, None, None
                     raw_params = data.get("parameters", data.get("args", {}))
                     parameters = raw_params if isinstance(raw_params, dict) else {}
 
@@ -122,6 +126,10 @@ def parse_react_response(
                         and len(data["action"].strip()) > 0
                     ):
                         tool_name = data["action"].strip()
+                        if tool_name.lower() in (
+                            "none", "null", "finish", "done", "stop", "final_answer", "no_tool"
+                        ):
+                            return None, None, None
                         raw_params = data.get("parameters", data.get("args", {}))
                         parameters = raw_params if isinstance(raw_params, dict) else {}
 

@@ -1,5 +1,7 @@
 """Zero-context credential proxy gate for JIT parameter resolution and log scrubbing."""
 
+from typing import Any
+
 from agent_os.domain.security import ResolvedParameters, ScrubbedOutput
 from agent_os.infrastructure.security.vault_repo import CredentialVaultRepository
 
@@ -13,10 +15,10 @@ class CredentialProxyGate:
 
     def resolve_parameters(
         self,
-        parameters: dict[str, str | int | float | bool | None],
+        parameters: dict[str, Any],
     ) -> ResolvedParameters:
         """Resolve vault:// aliases to raw credentials and track secret strings for scrubbing."""
-        resolved_params: dict[str, str | int | float | bool | None] = {}
+        resolved_params: dict[str, Any] = {}
         resolved_aliases: list[str] = []
         secrets_to_scrub: list[str] = []
 
