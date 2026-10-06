@@ -1,4 +1,4 @@
-"""Domain models for task briefs, runbook specifications, and compiled execution packets."""
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -33,3 +33,4 @@ class CompiledExecutionPacket(BaseModel):
     system_prompt: str
     target_tools: list[str]
     token_estimate: int
+    modality: Literal["direct", "react", "plan_execute_verify", "stategraph"] | None = None

@@ -62,9 +62,10 @@ class RecipeChamber:
                         action_tier=self._default_tier,
                     )
                 )
+        modality = request.packet.modality or ("react" if tools else "direct")
         runner_req = RunnerExecutionRequest(
             task=request.task,
-            modality="react" if tools else "direct",
+            modality=modality,
             system_prompt=request.packet.system_prompt,
             timeout_seconds=request.timeout_seconds,
             tools=tools,

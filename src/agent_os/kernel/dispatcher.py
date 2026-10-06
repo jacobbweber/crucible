@@ -168,6 +168,7 @@ class ZeroCatalogDispatcher:
                 system_prompt=recipe.body,
                 target_tools=recipe.metadata.required_tools,
                 token_estimate=estimate_tokens(recipe.body),
+                modality=recipe.metadata.execution_engine,
             )
             envelope = await self.chamber.execute_sub_job(
                 SubJobExecutionRequest(

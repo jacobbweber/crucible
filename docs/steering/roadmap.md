@@ -25,7 +25,7 @@ Per `.agents/rules/live-testing.md`, every live test and smoke verification must
 | 3 | **Wiki Vault & Graduation** | 4-folder vault, graduation pipeline | Ingestion, path-traversal rejection, safe collision resolution on graduation | H8, L1 | ✅ Complete |
 | 4 | **Security & Policy Gate** | Hardware-keyed vault, credential proxy, policy gate | Secret storage, `vault://` symbolic alias scrubbing, strict/balanced modes | H4, C3 | ✅ Complete |
 | 5 | **Front Door & Memory** | Prompt assembly, fact recall, chat memory | Multi-turn chat with active trace, fact recall, sliding window past 15 turns | M1, M2, M5 | ✅ Complete |
-| 6 | **Worker Runtime** | Recipe chamber, runner modalities, journeys | ReAct runner with live model calling wiki tools, cycle detection, brief schema | **C2**, H2, M6 | ⚪ Pending |
+| 6 | **Worker Runtime** | Recipe chamber, runner modalities, journeys | ReAct runner with live model calling wiki tools, cycle detection, brief schema | **C2**, H2, M6 | ✅ Complete |
 | 7 | **Dispatch & Pipeline** | Recipe vs ephemeral task routing | Near-miss recipe matching, ephemeral brief synthesis, graduation evaluation | H1, H2 | ⚪ Pending |
 | 8 | **Signaling & Scheduler** | Background routines, session isolation | Multi-session nudge isolation, persistence across restarts, routine catch-up | H5, H6, M1 | ⚪ Pending |
 | 9 | **Education Engine** | SM-2 spaced repetition, pedagogical stages | Card review intervals, skill advancement via tool invocation | M3 | ⚪ Pending |
@@ -40,11 +40,11 @@ Severity: 🔴 Critical · 🟠 High · 🟡 Medium · ⚪ Low
 | ID | Sev | Area | Description | Status |
 |---|---|---|---|---|
 | **C1** | 🔴 | Bootstrap | No composition root or entry point. | ✅ Fixed (Phase 0) |
-| **C2** | 🔴 | Runner | ReAct workers are never provided tool schemas or action format in prompt. | ⚪ Open (Phase 6) |
+| **C2** | 🔴 | Runner | ReAct workers are never provided tool schemas or action format in prompt. | ✅ Fixed (Phase 6) |
 | **C3** | 🔴 | Policy | Policy bypass in workers (`STATE_CHANGE` forced on all tools). | ✅ Fixed (Phase 4) |
 | **C4** | 🔴 | Integration | Chat cannot trigger jobs or tools (isolated halves). | ⚪ Open (Phase 10) |
 | **H1** | 🟠 | Dispatch | Recipe lexical matching ORs every word with low threshold fallback. | ✅ Fixed (Phase 2) |
-| **H2** | 🟠 | Runner | Recipe `execution_engine` ignored; PEV and stategraph unreachable. | ⚪ Open (Phase 6) |
+| **H2** | 🟠 | Runner | Recipe `execution_engine` ignored; PEV and stategraph unreachable. | ✅ Fixed (Phase 6) |
 | **H3** | 🟠 | Gateway | Runner sends `role="tool"` without `tool_call_id`. | ✅ Fixed (Phase 1) |
 | **H4** | 🟠 | Security | Secrets scrubbed from output but not error; MAC-address default key derivation. | ✅ Fixed (Phase 4) |
 | **H5** | 🟠 | Isolation | Global nudge queue leaks results across sessions. | ⚪ Open (Phase 8) |
@@ -56,7 +56,7 @@ Severity: 🔴 Critical · 🟠 High · 🟡 Medium · ⚪ Low
 | **M3** | 🟡 | Education | Education datetime parsing and pedagogical advancement unwired. | ⚪ Open (Phase 9) |
 | **M4** | 🟡 | Code Quality | Duplicate attribute aliases throughout codebase. | ⚪ Open |
 | **M5** | 🟡 | Context | Token counting hardcoded to `len // 4` without model budget limits. | ✅ Fixed (Phase 5) |
-| **M6** | 🟡 | Runner | Execution timeouts passed but not enforced. | ⚪ Open (Phase 6) |
+| **M6** | 🟡 | Runner | Execution timeouts passed but not enforced. | ✅ Fixed (Phase 6) |
 | **M7** | 🟡 | Config | `AGENT_OS_DATA_DIR` mismatch in `.env.example`. | ✅ Fixed (Phase 0) |
 | **M8** | 🟡 | Clean Code | Multiple files exceeding 300-line modularity threshold. | ⚪ Open |
 | **L1** | ⚪ | Wiki | Linear file search in wiki store; wiki_read calls private _resolve_safe_path. | ✅ Addressed (Phase 3) |

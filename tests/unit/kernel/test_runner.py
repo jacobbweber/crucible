@@ -7,7 +7,7 @@ import pytest
 from agent_os.domain.gateway import CompletionRequest, StreamChunk
 from agent_os.domain.policy import ActionTier, ApprovalMode, PolicyDecisionType
 from agent_os.domain.runner import RunnerExecutionRequest
-from agent_os.domain.tools import ToolDefinition, ToolExecutionResult
+from agent_os.domain.tools import ToolDefinition, ToolExecutionResult, ToolParameterSchema
 from agent_os.infrastructure.gateway.base import BaseModelAdapter
 from agent_os.kernel.policy_gate import ToolPolicyGate
 from agent_os.kernel.runner import NativeRunner
@@ -242,3 +242,113 @@ async def test_runner_policy_gate_blocks_execution() -> None:
     assert any(
         s.step_type == "tool_result" and "Policy gate blocked" in s.content for s in result.steps
     )
+
+
+@pytest.mark.asyncio
+async def test_runner_react_tools_prompt_injection() -> None:
+    """Verify tool schemas and contract are injected into ReAct worker prompt (C2)."""
+    adapter = MockModelAdapter(responses=["Final direct response"])
+    gate = ToolPolicyGate(ApprovalMode.BALANCED)
+    runner = NativeRunner(model_adapter=adapter, policy_gate=gate, tool_dispatcher={})
+
+    tool_def = ToolDefinition(
+        name="calculate_sum",
+        description="Compute sum of two numbers",
+        action_tier=ActionTier.READ,
+        parameters=[
+            ToolParameterSchema(
+                name="a",
+                type_name="integer",
+                description="First number",
+                required=True,
+            ),
+            ToolParameterSchema(
+                name="b",
+                type_name="integer",
+                description="Second number",
+                required=False,
+                default=0,
+            ),
+        ],
+    )
+
+    request = RunnerExecutionRequest(
+        task="Add 5 and 10",
+        modality="react",
+        system_prompt="Base worker prompt",
+        tools=[tool_def],
+    )
+    result = await runner.execute(request)
+    assert result.success is True
+
+    # Inspect the system prompt delivered to the model adapter
+    assert len(adapter.requests) == 1
+    system_msg = adapter.requests[0].messages[0]
+    assert system_msg.role == "system"
+    assert "Base worker prompt" in system_msg.content
+    assert "<tools>" in system_msg.content
+    assert "### `calculate_sum`" in system_msg.content
+    assert "Description: Compute sum of two numbers" in system_msg.content
+    assert "- `a` (integer, required): First number" in system_msg.content
+    assert "- `b` (integer, optional, default: 0): Second number" in system_msg.content
+    assert "Tool Invocation Contract:" in system_msg.content
+    assert '"action": "<tool_name>"' in system_msg.content
+
+
+@pytest.mark.asyncio
+async def test_runner_timeout_enforcement() -> None:
+    """Verify execution exceeding timeout_seconds is cancelled and returns failed result (M6)."""
+
+    class SlowModelAdapter(BaseModelAdapter):
+        async def complete(self, request: CompletionRequest) -> AsyncIterator[StreamChunk]:
+            import asyncio
+
+            await asyncio.sleep(2.0)
+            yield StreamChunk(delta="Too late")
+
+    runner = NativeRunner(
+        model_adapter=SlowModelAdapter(),
+        policy_gate=ToolPolicyGate(ApprovalMode.BALANCED),
+        tool_dispatcher={},
+    )
+    # Using timeout_seconds=1 (ge=10 in validator, but can pass 1 directly for test or mock)
+    request = RunnerExecutionRequest.model_construct(
+        task="Long running task",
+        modality="direct",
+        timeout_seconds=0.1,  # type: ignore[arg-type]
+    )
+    result = await runner.execute(request)
+
+    assert result.success is False
+    assert result.error is not None
+    assert "Execution timed out" in result.error
+
+
+@pytest.mark.asyncio
+async def test_runner_plan_execute_verify_modality() -> None:
+    """Verify plan_execute_verify modality traverses plan -> thought -> verify sequence (H2)."""
+    adapter = MockModelAdapter(
+        responses=[
+            "Step 1: Check inputs. Step 2: Calculate.",
+            "Inputs checked. Calculation output: 42.",
+            "Verified calculation 42 meets task directive.",
+        ]
+    )
+    runner = NativeRunner(
+        model_adapter=adapter,
+        policy_gate=ToolPolicyGate(ApprovalMode.BALANCED),
+        tool_dispatcher={},
+    )
+    request = RunnerExecutionRequest(
+        task="Verify mathematical result",
+        modality="plan_execute_verify",
+    )
+    result = await runner.execute(request)
+
+    assert result.success is True
+    assert result.total_turns == 3
+    assert len(result.steps) == 3
+    assert result.steps[0].step_type == "plan"
+    assert result.steps[1].step_type == "thought"
+    assert result.steps[2].step_type == "verify"
+    assert result.final_output == "Verified calculation 42 meets task directive."

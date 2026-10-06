@@ -1,7 +1,7 @@
 """Native multi-modal execution runner with cycle detection and policy gates."""
 
+import asyncio
 import json
-import re
 import time
 from collections.abc import Callable, Coroutine
 from typing import Any
@@ -12,10 +12,13 @@ from agent_os.domain.runner import RunnerExecutionRequest, RunnerResult, RunnerS
 from agent_os.domain.tools import ToolDefinition, ToolExecutionResult
 from agent_os.infrastructure.gateway.base import BaseModelAdapter
 from agent_os.kernel.policy_gate import ToolPolicyGate
+from agent_os.kernel.react_parser import format_tools_prompt, parse_react_response
 
 
 class NativeRunner:
     """Pure Python execution engine for direct, ReAct, plan-execute-verify, and stategraph."""
+
+    _parse_react_response = staticmethod(parse_react_response)
 
     def __init__(
         self,
@@ -28,16 +31,26 @@ class NativeRunner:
         self.tool_dispatcher = tool_dispatcher
 
     async def execute(self, request: RunnerExecutionRequest) -> RunnerResult:
-        """Branch to modality handlers based on execution request."""
-        if request.modality == "direct":
-            return await self._execute_direct(request)
-        if request.modality == "react":
-            return await self._execute_react(request)
-        if request.modality == "plan_execute_verify":
-            return await self._execute_plan_execute_verify(request)
-        if request.modality == "stategraph":
-            return await self._execute_stategraph(request)
-        raise ValueError(f"Unsupported execution modality: {request.modality}")
+        """Branch to modality handlers based on execution request with timeout (M6)."""
+        try:
+            async with asyncio.timeout(request.timeout_seconds):
+                if request.modality == "direct":
+                    return await self._execute_direct(request)
+                if request.modality == "react":
+                    return await self._execute_react(request)
+                if request.modality == "plan_execute_verify":
+                    return await self._execute_plan_execute_verify(request)
+                if request.modality == "stategraph":
+                    return await self._execute_stategraph(request)
+                raise ValueError(f"Unsupported execution modality: {request.modality}")
+        except TimeoutError:
+            return RunnerResult(
+                success=False,
+                final_output="",
+                steps=[],
+                total_turns=0,
+                error=f"Execution timed out after {request.timeout_seconds}s",
+            )
 
     async def _execute_direct(self, request: RunnerExecutionRequest) -> RunnerResult:
         """Execute single direct completion request."""
@@ -65,99 +78,74 @@ class NativeRunner:
             total_turns=1,
         )
 
-    def _parse_react_response(
-        self, text: str
-    ) -> tuple[str | None, str | None, dict[str, Any] | None]:
-        """Parse model reasoning vs structured tool invocations.
-
-        Returns (thought, tool_name, parameters) or (None, None, None) if final answer.
-        """
-        start_pos = 0
-        while True:
-            idx = text.find("{", start_pos)
-            if idx == -1:
-                break
-
-            depth = 0
-            in_string = False
-            escape = False
-            end_idx = -1
-            for i in range(idx, len(text)):
-                c = text[i]
-                if escape:
-                    escape = False
-                    continue
-                if c == "\\":
-                    escape = True
-                    continue
-                if c == '"':
-                    in_string = not in_string
-                    continue
-                if not in_string:
-                    if c == "{":
-                        depth += 1
-                    elif c == "}":
-                        depth -= 1
-                        if depth == 0:
-                            end_idx = i
-                            break
-
-            if end_idx != -1:
-                json_str = text[idx : end_idx + 1]
-                try:
-                    data = json.loads(json_str)
-                    if (
-                        isinstance(data, dict)
-                        and "action" in data
-                        and isinstance(data["action"], str)
-                        and len(data["action"].strip()) > 0
-                    ):
-                        tool_name = data["action"].strip()
-                        raw_params = data.get("parameters", data.get("args", {}))
-                        parameters = raw_params if isinstance(raw_params, dict) else {}
-
-                        thought = data.get("thought")
-                        if not thought or not str(thought).strip():
-                            raw_pre = text[:idx]
-                            cleaned_pre = re.sub(r"```(?:json)?\s*$", "", raw_pre).strip()
-                            thought = cleaned_pre if cleaned_pre else f"Calling tool: {tool_name}"
-                        return str(thought), tool_name, parameters
-                except json.JSONDecodeError:
-                    try:
-                        sanitized = re.sub(r"\bTrue\b", "true", json_str)
-                        sanitized = re.sub(r"\bFalse\b", "false", sanitized)
-                        sanitized = re.sub(r"\bNone\b", "null", sanitized)
-                        data = json.loads(sanitized)
-                        if (
-                            isinstance(data, dict)
-                            and "action" in data
-                            and isinstance(data["action"], str)
-                            and len(data["action"].strip()) > 0
-                        ):
-                            tool_name = data["action"].strip()
-                            raw_params = data.get("parameters", data.get("args", {}))
-                            parameters = raw_params if isinstance(raw_params, dict) else {}
-
-                            thought = data.get("thought")
-                            if not thought or not str(thought).strip():
-                                raw_pre = text[:idx]
-                                cleaned_pre = re.sub(r"```(?:json)?\s*$", "", raw_pre).strip()
-                                thought = cleaned_pre or f"Calling tool: {tool_name}"
-                            return str(thought), tool_name, parameters
-                    except json.JSONDecodeError:
-                        pass
-                start_pos = idx + 1
+    def _evaluate_policy(
+        self,
+        tool_name: str,
+        params_dict: dict[str, Any],
+        tool_def_map: dict[str, ToolDefinition],
+    ) -> tuple[bool, str]:
+        """Evaluate action tier and parameters against the policy gate."""
+        tool_def = tool_def_map.get(tool_name)
+        action_tier = tool_def.action_tier if tool_def else ActionTier.DESTRUCTIVE
+        safe_params: dict[str, str | int | float | bool | None] = {}
+        for k, v in params_dict.items():
+            if isinstance(v, (str, int, float, bool)) or v is None:
+                safe_params[k] = v
             else:
-                break
+                safe_params[k] = str(v)
 
-        return None, None, None
+        call_request = ToolCallRequest(
+            tool_name=tool_name,
+            action_tier=action_tier,
+            parameters=safe_params,
+        )
+        decision = self.policy_gate.evaluate(call_request)
+        if decision.decision == PolicyDecisionType.BLOCK or decision.requires_prompt:
+            return False, decision.reason or "Action rejected by policy gate"
+        return True, ""
+
+    async def _dispatch_tool(
+        self,
+        tool_name: str,
+        params_dict: dict[str, Any],
+    ) -> tuple[ToolExecutionResult, int]:
+        """Invoke tool through the registered tool dispatcher with timing."""
+        if tool_name not in self.tool_dispatcher:
+            return (
+                ToolExecutionResult(
+                    tool_name=tool_name,
+                    success=False,
+                    output="",
+                    error=f"Tool '{tool_name}' not found in dispatcher",
+                ),
+                0,
+            )
+        start_time = time.monotonic()
+        try:
+            res = await self.tool_dispatcher[tool_name](**params_dict)
+        except Exception as e:
+            res = ToolExecutionResult(
+                tool_name=tool_name,
+                success=False,
+                output="",
+                error=str(e),
+            )
+        duration_ms = int((time.monotonic() - start_time) * 1000)
+        return res, duration_ms
 
     async def _execute_react(self, request: RunnerExecutionRequest) -> RunnerResult:
-        """Execute bounded ReAct loop with cycle detection and policy gates."""
+        """Execute bounded ReAct loop with tool schemas, cycle detection, and policy gates."""
         steps: list[RunnerStepEvent] = []
         messages: list[ChatMessage] = []
-        if request.system_prompt:
-            messages.append(ChatMessage(role="system", content=request.system_prompt))
+
+        tools_block = format_tools_prompt(request.tools)
+        system_content = request.system_prompt
+        if tools_block:
+            system_content = (
+                f"{system_content}\n\n{tools_block}" if system_content else tools_block
+            )
+        if system_content:
+            messages.append(ChatMessage(role="system", content=system_content))
         messages.append(ChatMessage(role="user", content=request.task))
 
         tool_def_map: dict[str, ToolDefinition] = {t.name: t for t in request.tools}
@@ -173,8 +161,6 @@ class NativeRunner:
             response_text = "".join(chunks)
 
             thought, tool_name, parameters = self._parse_react_response(response_text)
-
-            # Final answer reached when no tool call is requested
             if tool_name is None:
                 return RunnerResult(
                     success=True,
@@ -183,7 +169,6 @@ class NativeRunner:
                     total_turns=turn_count,
                 )
 
-            # Record thought step
             thought_text = thought if thought else f"Calling tool: {tool_name}"
             steps.append(
                 RunnerStepEvent(
@@ -194,11 +179,9 @@ class NativeRunner:
                 )
             )
 
-            # Repeat-call cycle detector
             params_dict = parameters or {}
             params_key = json.dumps(params_dict, sort_keys=True)
             call_history.append((tool_name, params_key))
-
             if len(call_history) >= 3 and call_history[-1] == call_history[-2] == call_history[-3]:
                 return RunnerResult(
                     success=False,
@@ -209,7 +192,6 @@ class NativeRunner:
                     aborted_by_cycle_detection=True,
                 )
 
-            # Record tool call step
             steps.append(
                 RunnerStepEvent(
                     step_index=len(steps),
@@ -221,33 +203,17 @@ class NativeRunner:
                 )
             )
 
-            # Policy check
-            tool_def = tool_def_map.get(tool_name)
-            action_tier = tool_def.action_tier if tool_def else ActionTier.DESTRUCTIVE
-            safe_params: dict[str, str | int | float | bool | None] = {}
-            for k, v in params_dict.items():
-                if isinstance(v, (str, int, float, bool)) or v is None:
-                    safe_params[k] = v
-                else:
-                    safe_params[k] = str(v)
-
-            call_request = ToolCallRequest(
-                tool_name=tool_name,
-                action_tier=action_tier,
-                parameters=safe_params,
-            )
-            decision = self.policy_gate.evaluate(call_request)
-
-            if decision.decision == PolicyDecisionType.BLOCK or decision.requires_prompt:
-                block_reason = decision.reason or "Action rejected by policy gate"
+            allowed, reason = self._evaluate_policy(tool_name, params_dict, tool_def_map)
+            if not allowed:
+                block_msg = f"Policy gate blocked tool {tool_name}: {reason}"
                 steps.append(
                     RunnerStepEvent(
                         step_index=len(steps),
                         modality="react",
                         step_type="tool_result",
-                        content=f"Policy gate blocked tool: {block_reason}",
+                        content=block_msg,
                         tool_name=tool_name,
-                        tool_output=f"BLOCKED: {block_reason}",
+                        tool_output=f"BLOCKED: {reason}",
                     )
                 )
                 return RunnerResult(
@@ -255,64 +221,36 @@ class NativeRunner:
                     final_output="",
                     steps=steps,
                     total_turns=turn_count,
-                    error=f"Policy gate blocked tool {tool_name}: {block_reason}",
+                    error=block_msg,
                 )
 
-            # Tool dispatch
-            if tool_name not in self.tool_dispatcher:
-                err_msg = f"Tool '{tool_name}' not found in dispatcher"
-                steps.append(
-                    RunnerStepEvent(
-                        step_index=len(steps),
-                        modality="react",
-                        step_type="tool_result",
-                        content=err_msg,
-                        tool_name=tool_name,
-                        tool_output=err_msg,
-                    )
-                )
-                return RunnerResult(
-                    success=False,
-                    final_output="",
-                    steps=steps,
-                    total_turns=turn_count,
-                    error=err_msg,
-                )
-
-            start_time = time.monotonic()
-            tool_fn = self.tool_dispatcher[tool_name]
-            try:
-                tool_res = await tool_fn(**params_dict)
-            except Exception as e:
-                tool_res = ToolExecutionResult(
-                    tool_name=tool_name,
-                    success=False,
-                    output="",
-                    error=str(e),
-                )
-            duration_ms = int((time.monotonic() - start_time) * 1000)
-
-            tool_output_str = (
-                tool_res.output if tool_res.success else (tool_res.error or "Tool execution failed")
-            )
+            tool_res, duration_ms = await self._dispatch_tool(tool_name, params_dict)
+            output_str = tool_res.output if tool_res.success else (tool_res.error or "Failed")
             steps.append(
                 RunnerStepEvent(
                     step_index=len(steps),
                     modality="react",
                     step_type="tool_result",
-                    content=tool_output_str,
+                    content=output_str,
                     tool_name=tool_name,
-                    tool_output=tool_output_str,
+                    tool_output=output_str,
                     duration_ms=duration_ms,
                 )
             )
+            if not tool_res.success and "not found in dispatcher" in (tool_res.error or ""):
+                return RunnerResult(
+                    success=False,
+                    final_output="",
+                    steps=steps,
+                    total_turns=turn_count,
+                    error=tool_res.error,
+                )
 
-            # Feed observation back to conversation context
             messages.append(ChatMessage(role="assistant", content=response_text))
             messages.append(
                 ChatMessage(
                     role="tool",
-                    content=f"Observation from {tool_name}: {tool_output_str}",
+                    content=f"Observation from {tool_name}: {output_str}",
                     name=tool_name,
                 )
             )

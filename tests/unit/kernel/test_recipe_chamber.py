@@ -288,3 +288,47 @@ async def test_recipe_chamber_preserves_read_tier_allows_in_strict(
     assert envelope.status == "completed"
     assert "read successfully" in envelope.summary
 
+
+@pytest.mark.asyncio
+async def test_recipe_chamber_routes_packet_modality(tmp_path: Path) -> None:
+    """Verify RecipeChamber honors packet.modality instead of defaulting to react (H2)."""
+    db_file = tmp_path / "session_store.db"
+    repo = SessionRepository(db_file)
+    session = repo.create_session("Modality Routing Session")
+
+    adapter = MockModelAdapter(
+        responses=[
+            "Step 1: Inspect. Step 2: Conclude.",
+            "Inspection executed.",
+            "Verification confirmed.",
+        ]
+    )
+    runner = NativeRunner(
+        model_adapter=adapter,
+        policy_gate=ToolPolicyGate(ApprovalMode.BALANCED),
+        tool_dispatcher={},
+    )
+    chamber = RecipeChamber(runner=runner, session_repo=repo)
+
+    packet = CompiledExecutionPacket(
+        system_prompt="System instructions",
+        target_tools=[],
+        token_estimate=5,
+        modality="plan_execute_verify",
+    )
+    request = SubJobExecutionRequest(
+        session_id=session.session_id,
+        task="Test plan execute verify routing",
+        packet=packet,
+    )
+
+    envelope = await chamber.execute_sub_job(request)
+
+    assert envelope.status == "completed"
+    assert "Verification confirmed" in envelope.summary
+
+    # Verify journey_steps in scratchpad show PEV nodes, not react
+    steps = repo.get_journey_scratchpad(envelope.journey_id)
+    assert len(steps) == 3
+    assert [s["node_name"] for s in steps] == ["plan", "thought", "verify"]
+
