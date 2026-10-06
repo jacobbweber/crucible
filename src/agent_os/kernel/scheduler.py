@@ -6,6 +6,7 @@ from typing import Any
 
 from agent_os.domain.schedule import RoutineExecutionLog, ScheduledRoutine
 from agent_os.infrastructure.gateway.semaphore import InferenceSemaphore
+from agent_os.infrastructure.storage.routine_repo import RoutineRepository
 from agent_os.kernel.dispatcher import ZeroCatalogDispatcher
 
 
@@ -80,14 +81,32 @@ class EmbeddedSchedulerDaemon:
         dispatcher: ZeroCatalogDispatcher,
         semaphore: InferenceSemaphore,
         routines: list[ScheduledRoutine] | None = None,
+        routine_repo: RoutineRepository | None = None,
     ) -> None:
         self.dispatcher = dispatcher
         self.semaphore = semaphore
-        self.routines: dict[str, ScheduledRoutine] = {r.routine_id: r for r in (routines or [])}
+        self.routine_repo = routine_repo
+        self.routines: dict[str, ScheduledRoutine] = {}
+
+        if self.routine_repo is not None:
+            for r in self.routine_repo.list_routines():
+                self.routines[r.routine_id] = r
+        if routines:
+            for r in routines:
+                self.routines[r.routine_id] = r
 
     def register_routine(self, routine: ScheduledRoutine) -> None:
         """Register a new or updated scheduled routine."""
         self.routines[routine.routine_id] = routine
+        if self.routine_repo is not None:
+            self.routine_repo.upsert_routine(routine)
+
+    def delete_routine(self, routine_id: str) -> bool:
+        """Unregister and remove a routine by ID."""
+        removed = self.routines.pop(routine_id, None) is not None
+        if self.routine_repo is not None:
+            self.routine_repo.delete_routine(routine_id)
+        return removed
 
     def get_routine(self, routine_id: str) -> ScheduledRoutine | None:
         """Retrieve a registered routine by ID."""
@@ -142,34 +161,42 @@ class EmbeddedSchedulerDaemon:
                 elif routine.catch_up_policy == "queue_all":
                     routine.next_run_at = compute_next_run(routine.cron_expression, now)
                     catch_up_routines.append(routine)
+                if self.routine_repo is not None:
+                    self.routine_repo.upsert_routine(routine)
 
         return catch_up_routines
 
     async def tick(self, now: datetime) -> list[RoutineExecutionLog]:
-        """Execute due routines according to schedule and hardware concurrency boundaries."""
+        """Execute due routines per schedule, catch-up policies, and concurrency boundaries."""
         logs: list[RoutineExecutionLog] = []
 
-        due_routines = [
-            r
-            for r in self.routines.values()
-            if r.is_active and r.next_run_at is not None and r.next_run_at <= now
-        ]
+        # 1. Catch-up evaluation for overdue routines (H6)
+        catch_up_routines = self.evaluate_catch_up(now)
+        due_dict = {r.routine_id: r for r in catch_up_routines}
+
+        # 2. Check for active routines scheduled for current tick
+        for r in self.routines.values():
+            if r.is_active and r.next_run_at is not None and r.next_run_at <= now:
+                due_dict[r.routine_id] = r
+
+        due_routines = list(due_dict.values())
         if not due_routines:
             return logs
 
         for r in due_routines:
             # Concurrency Gating (ADR-002)
             if self._is_concurrency_saturated():
-                logs.append(
-                    RoutineExecutionLog(
-                        execution_id=f"exec_{uuid.uuid4().hex[:12]}",
-                        routine_id=r.routine_id,
-                        started_at=now,
-                        completed_at=now,
-                        status="skipped_concurrency",
-                        error_message="Inference slots saturated",
-                    )
+                log_entry = RoutineExecutionLog(
+                    execution_id=f"exec_{uuid.uuid4().hex[:12]}",
+                    routine_id=r.routine_id,
+                    started_at=now,
+                    completed_at=now,
+                    status="skipped_concurrency",
+                    error_message="Inference slots saturated",
                 )
+                logs.append(log_entry)
+                if self.routine_repo is not None:
+                    self.routine_repo.log_execution(log_entry)
                 continue
 
             exec_id = f"exec_{uuid.uuid4().hex[:12]}"
@@ -182,25 +209,29 @@ class EmbeddedSchedulerDaemon:
                     )
                 r.last_run_at = now
                 r.next_run_at = compute_next_run(r.cron_expression, now)
-                logs.append(
-                    RoutineExecutionLog(
-                        execution_id=exec_id,
-                        routine_id=r.routine_id,
-                        started_at=started_at,
-                        completed_at=datetime.now(UTC),
-                        status="success",
-                    )
+                if self.routine_repo is not None:
+                    self.routine_repo.upsert_routine(r)
+                log_entry = RoutineExecutionLog(
+                    execution_id=exec_id,
+                    routine_id=r.routine_id,
+                    started_at=started_at,
+                    completed_at=datetime.now(UTC),
+                    status="success",
                 )
+                logs.append(log_entry)
+                if self.routine_repo is not None:
+                    self.routine_repo.log_execution(log_entry)
             except Exception as e:
-                logs.append(
-                    RoutineExecutionLog(
-                        execution_id=exec_id,
-                        routine_id=r.routine_id,
-                        started_at=started_at,
-                        completed_at=datetime.now(UTC),
-                        status="failed",
-                        error_message=str(e),
-                    )
+                log_entry = RoutineExecutionLog(
+                    execution_id=exec_id,
+                    routine_id=r.routine_id,
+                    started_at=started_at,
+                    completed_at=datetime.now(UTC),
+                    status="failed",
+                    error_message=str(e),
                 )
+                logs.append(log_entry)
+                if self.routine_repo is not None:
+                    self.routine_repo.log_execution(log_entry)
 
         return logs

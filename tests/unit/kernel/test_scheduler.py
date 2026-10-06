@@ -3,6 +3,7 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import cast
 from unittest.mock import AsyncMock, MagicMock
 
@@ -168,3 +169,112 @@ async def test_scheduler_hardware_semaphore_gating() -> None:
     assert logs[0].error_message == "Inference slots saturated"
     assert len(dispatched) == 0
     assert routine.last_run_at is None
+
+
+@pytest.mark.asyncio
+async def test_scheduler_persistence_across_restarts(tmp_path: Path) -> None:
+    """Verify routines and execution logs persist across scheduler daemon restarts (H6)."""
+    db_file = tmp_path / "session_store.db"
+    from agent_os.infrastructure.storage.routine_repo import RoutineRepository
+
+    repo = RoutineRepository(db_file)
+    dispatcher, dispatched = _create_mock_dispatcher()
+    semaphore = InferenceSemaphore(max_concurrency=2)
+
+    # Instance 1: Register and run routine
+    scheduler1 = EmbeddedSchedulerDaemon(
+        dispatcher=dispatcher, semaphore=semaphore, routine_repo=repo
+    )
+    now = datetime(2026, 10, 6, 12, 0, tzinfo=UTC)
+    routine = ScheduledRoutine(
+        routine_id="periodic_summary",
+        name="Periodic Summary",
+        cron_expression="@interval 3600",
+        task_payload="Generate periodic system summary",
+        next_run_at=now,
+    )
+    scheduler1.register_routine(routine)
+
+    logs1 = await scheduler1.tick(now)
+    assert len(logs1) == 1
+    assert logs1[0].status == "success"
+    assert len(dispatched) == 1
+
+    # Instance 2 (Simulating Process Restart): Re-initialize with same repository
+    dispatcher2, dispatched2 = _create_mock_dispatcher()
+    scheduler2 = EmbeddedSchedulerDaemon(
+        dispatcher=dispatcher2, semaphore=semaphore, routine_repo=repo
+    )
+
+    restored_routines = scheduler2.list_routines()
+    assert len(restored_routines) == 1
+    restored = restored_routines[0]
+    assert restored.routine_id == "periodic_summary"
+    assert restored.last_run_at == now
+    assert restored.next_run_at is not None and restored.next_run_at > now
+
+    # Verify execution audit log was persisted to repository
+    saved_logs = repo.list_execution_logs(routine_id="periodic_summary")
+    assert len(saved_logs) == 1
+    assert saved_logs[0].status == "success"
+
+
+@pytest.mark.asyncio
+async def test_scheduler_tick_catch_up_skip_to_next() -> None:
+    """Overdue routine with skip_to_next policy advances next_run_at without executing."""
+    dispatcher, dispatched = _create_mock_dispatcher()
+    semaphore = InferenceSemaphore(max_concurrency=2)
+    scheduler = EmbeddedSchedulerDaemon(dispatcher=dispatcher, semaphore=semaphore)
+
+    now = datetime(2026, 10, 6, 12, 0, tzinfo=UTC)
+    overdue_time = now - timedelta(hours=5)
+
+    routine = ScheduledRoutine(
+        routine_id="missed_routine",
+        name="Missed Task",
+        cron_expression="@interval 3600",
+        task_payload="perform missed task",
+        catch_up_policy="skip_to_next",
+        next_run_at=overdue_time,
+    )
+    scheduler.register_routine(routine)
+
+    logs = await scheduler.tick(now)
+
+    assert len(logs) == 0
+    assert len(dispatched) == 0
+    assert routine.next_run_at is not None
+    assert routine.next_run_at > now
+    assert routine.last_run_at is None
+
+
+@pytest.mark.asyncio
+async def test_scheduler_tick_catch_up_run_once_immediately() -> None:
+    """Overdue routine with run_once_immediately policy executes once during tick."""
+    dispatcher, dispatched = _create_mock_dispatcher()
+    semaphore = InferenceSemaphore(max_concurrency=2)
+    scheduler = EmbeddedSchedulerDaemon(dispatcher=dispatcher, semaphore=semaphore)
+
+    now = datetime(2026, 10, 6, 12, 0, tzinfo=UTC)
+    overdue_time = now - timedelta(hours=3)
+
+    routine = ScheduledRoutine(
+        routine_id="catch_up_once",
+        name="Catch Up Task",
+        cron_expression="@interval 3600",
+        task_payload="perform catch up task",
+        catch_up_policy="run_once_immediately",
+        next_run_at=overdue_time,
+    )
+    scheduler.register_routine(routine)
+
+    logs = await scheduler.tick(now)
+
+    assert len(logs) == 1
+    assert logs[0].status == "success"
+    assert len(dispatched) == 1
+    assert dispatched[0] == ("system_scheduler", "perform catch up task")
+    assert routine.last_run_at == now
+    assert routine.next_run_at is not None
+    assert routine.next_run_at > now
+

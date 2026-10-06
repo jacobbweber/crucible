@@ -13,6 +13,7 @@ class AmbientNudge(BaseModel):
     """Compact notification representing an ambient event for UI toast or canvas banner."""
 
     nudge_id: str = Field(default_factory=lambda: str(uuid.uuid4()), min_length=1)
+    session_id: str = ""
     journey_id: str = Field(min_length=1)
     status: Literal["completed", "failed", "aborted"]
     short_notice: str = Field(max_length=120)

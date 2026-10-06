@@ -134,3 +134,51 @@ def test_drain_deferred_completions_direct() -> None:
     drained = signaler.drain_deferred_completions("sess_drain")
     assert drained == [env]
     assert signaler.drain_deferred_completions("sess_drain") == []
+
+
+def test_poll_ambient_nudges_session_isolation() -> None:
+    """Signal completions across distinct sessions; verify polling is isolated per session (H5)."""
+    signaler = CompletionSignaler()
+
+    env_a = SubJobReturnEnvelope(
+        journey_id="j_sess_a",
+        status="completed",
+        summary="Session A job finished.",
+        token_estimate=50,
+    )
+    env_b = SubJobReturnEnvelope(
+        journey_id="j_sess_b",
+        status="completed",
+        summary="Session B job finished.",
+        token_estimate=50,
+    )
+    env_sys = SubJobReturnEnvelope(
+        journey_id="j_sys_routine",
+        status="completed",
+        summary="System scheduled routine finished.",
+        token_estimate=40,
+    )
+
+    nudge_a = signaler.signal_completion("session_alpha", env_a)
+    nudge_b = signaler.signal_completion("session_beta", env_b)
+    nudge_sys = signaler.signal_completion("system_scheduler", env_sys)
+
+    assert nudge_a.session_id == "session_alpha"
+    assert nudge_b.session_id == "session_beta"
+    assert nudge_sys.session_id == "system_scheduler"
+
+    # Polling for session_alpha receives its own nudge and system broadcasts, but NOT session_beta
+    polled_a = signaler.poll_ambient_nudges(session_id="session_alpha")
+    assert nudge_a in polled_a
+    assert nudge_sys in polled_a
+    assert nudge_b not in polled_a
+
+    # Session beta's nudge remains in the queue
+    assert len(signaler._nudge_queue) == 1
+    assert signaler._nudge_queue[0] == nudge_b
+
+    # Polling for session_beta retrieves its nudge
+    polled_b = signaler.poll_ambient_nudges(session_id="session_beta")
+    assert polled_b == [nudge_b]
+    assert len(signaler._nudge_queue) == 0
+

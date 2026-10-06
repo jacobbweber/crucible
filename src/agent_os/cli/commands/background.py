@@ -66,7 +66,10 @@ def register(reg: CommandRegistry) -> None:
     async def _signals(ctx: ReplContext, args: list[str]) -> None:
         sig = ctx.kernel.signaler
         if args and args[0] == "nudges":
-            ctx.console.json([n.model_dump() for n in sig.poll_ambient_nudges()])
+            sid = args[1] if len(args) > 1 else ctx.session_id
+            target_sid = None if sid == "all" else sid
+            nudges = sig.poll_ambient_nudges(session_id=target_sid)
+            ctx.console.json([n.model_dump() for n in nudges])
             return
         sid = args[1] if len(args) > 1 else ctx.session_id
         for key in (sid, "system_scheduler"):

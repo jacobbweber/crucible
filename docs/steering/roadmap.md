@@ -27,7 +27,7 @@ Per `.agents/rules/live-testing.md`, every live test and smoke verification must
 | 5 | **Front Door & Memory** | Prompt assembly, fact recall, chat memory | Multi-turn chat with active trace, fact recall, sliding window past 15 turns | M1, M2, M5 | ✅ Complete |
 | 6 | **Worker Runtime** | Recipe chamber, runner modalities, journeys | ReAct runner with live model calling wiki tools, cycle detection, brief schema | **C2**, H2, M6 | ✅ Complete |
 | 7 | **Dispatch & Pipeline** | Recipe vs ephemeral task routing | Near-miss recipe matching, ephemeral brief synthesis, graduation evaluation | H1, H2 | ✅ Complete |
-| 8 | **Signaling & Scheduler** | Background routines, session isolation | Multi-session nudge isolation, persistence across restarts, routine catch-up | H5, H6, M1 | ⚪ Pending |
+| 8 | **Signaling & Scheduler** | Background routines, session isolation | Multi-session nudge isolation, persistence across restarts, routine catch-up | H5, H6, M1 | ✅ Complete |
 | 9 | **Education Engine** | SM-2 spaced repetition, pedagogical stages | Card review intervals, skill advancement via tool invocation | M3 | ⚪ Pending |
 | 10 | **End-to-End System** | Complete user day-in-the-life | Complex conversational task dispatching background worker, ambient nudge return | C4 | ⚪ Pending |
 
@@ -47,8 +47,8 @@ Severity: 🔴 Critical · 🟠 High · 🟡 Medium · ⚪ Low
 | **H2** | 🟠 | Runner | Recipe `execution_engine` ignored; PEV and stategraph unreachable. | ✅ Fixed (Phase 6) |
 | **H3** | 🟠 | Gateway | Runner sends `role="tool"` without `tool_call_id`. | ✅ Fixed (Phase 1) |
 | **H4** | 🟠 | Security | Secrets scrubbed from output but not error; MAC-address default key derivation. | ✅ Fixed (Phase 4) |
-| **H5** | 🟠 | Isolation | Global nudge queue leaks results across sessions. | ⚪ Open (Phase 8) |
-| **H6** | 🟠 | Scheduler | In-memory routines lose state on restart; catch-up logic unwired. | ⚪ Open (Phase 8) |
+| **H5** | 🟠 | Isolation | Global nudge queue leaks results across sessions. | ✅ Fixed (Phase 8) |
+| **H6** | 🟠 | Scheduler | In-memory routines lose state on restart; catch-up logic unwired. | ✅ Fixed (Phase 8) |
 | **H7** | 🟠 | Concurrency | Inference semaphore only guards scheduler, bypassing chat & manual jobs. | ✅ Fixed (Phase 1) |
 | **H8** | 🟠 | Wiki | Inbox note graduation silently overwrites same-named files. | ✅ Fixed (Phase 3) |
 | **M1** | 🟡 | Layering | Raw SQL executed from kernel signaling dispatcher. | ✅ Fixed (Phase 5) |

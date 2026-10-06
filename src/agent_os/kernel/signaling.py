@@ -21,6 +21,7 @@ class CompletionSignaler:
         ]
         nudge = AmbientNudge(
             nudge_id=str(uuid.uuid4()),
+            session_id=session_id,
             journey_id=envelope.journey_id,
             status=envelope.status,
             short_notice=short_notice,
@@ -32,13 +33,35 @@ class CompletionSignaler:
 
         return nudge
 
-    def poll_ambient_nudges(self, limit: int = 10) -> list[AmbientNudge]:
-        """Poll and pop up to `limit` ambient nudges from the queue in FIFO order."""
+    def poll_ambient_nudges(
+        self, session_id: str | None = None, limit: int = 10
+    ) -> list[AmbientNudge]:
+        """Poll and pop up to `limit` ambient nudges in FIFO order.
+
+        If `session_id` is provided, only pops nudges addressed to that session
+        or system broadcasts (session_id in ("", "system_scheduler")), preserving
+        other sessions' queued nudges (H5).
+        """
         if limit <= 0:
             return []
-        popped = self._nudge_queue[:limit]
-        self._nudge_queue = self._nudge_queue[limit:]
-        return popped
+
+        if session_id is None:
+            popped = self._nudge_queue[:limit]
+            self._nudge_queue = self._nudge_queue[limit:]
+            return popped
+
+        matched: list[AmbientNudge] = []
+        remaining: list[AmbientNudge] = []
+        for nudge in self._nudge_queue:
+            if len(matched) < limit and (
+                nudge.session_id == session_id
+                or nudge.session_id in ("", "system_scheduler")
+            ):
+                matched.append(nudge)
+            else:
+                remaining.append(nudge)
+        self._nudge_queue = remaining
+        return matched
 
     def drain_deferred_completions(self, session_id: str) -> list[SubJobReturnEnvelope]:
         """Pop and clear all deferred completion return envelopes for session_id."""

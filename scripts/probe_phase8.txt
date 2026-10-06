@@ -1,0 +1,6 @@
+/routine add test_routine @hourly list notes in category 01_Notes --due-in -1
+/routine list
+/tick
+/signals nudges
+/signals nudges session_unrelated
+/quit

@@ -24,6 +24,7 @@ from agent_os.infrastructure.security.vault_repo import CredentialVaultRepositor
 from agent_os.infrastructure.storage.education_repo import EducationRepository
 from agent_os.infrastructure.storage.facts_repo import FactRepository
 from agent_os.infrastructure.storage.recipe_repo import RecipeRepository
+from agent_os.infrastructure.storage.routine_repo import RoutineRepository
 from agent_os.infrastructure.storage.session_repo import SessionRepository
 from agent_os.infrastructure.wiki.store import WikiStore
 from agent_os.kernel.chat_loop import CompanionChatLoop
@@ -49,10 +50,12 @@ class _SchedulerSignalingDispatcher:
         dispatcher: ZeroCatalogDispatcher,
         signaler: CompletionSignaler,
         session_repo: SessionRepository,
+        tools: dict[str, Any] | None = None,
     ) -> None:
         self._dispatcher = dispatcher
         self._signaler = signaler
         self._session_repo = session_repo
+        self._tools = tools or {}
 
     async def dispatch_task(
         self,
@@ -61,8 +64,9 @@ class _SchedulerSignalingDispatcher:
         available_tools: list[str] | None = None,
     ) -> DispatchResult:
         self._session_repo.ensure_session(session_id, title=f"System Session: {session_id}")
+        tools_list = available_tools if available_tools is not None else list(self._tools.keys())
         res = await self._dispatcher.dispatch_task(
-            session_id, task, available_tools=available_tools
+            session_id, task, available_tools=tools_list
         )
         self._signaler.signal_completion(session_id, res.envelope)
         return res
@@ -85,6 +89,7 @@ class AgentOSKernel:
         wiki_store: WikiStore,
         model_adapter: BaseModelAdapter,
         semaphore: InferenceSemaphore | None = None,
+        routine_repo: RoutineRepository | None = None,
     ) -> None:
         self.config = config
         self.session_repo = session_repo
@@ -94,6 +99,7 @@ class AgentOSKernel:
         self.vault_repo = vault_repo
         self.wiki_store = wiki_store
         self.model_adapter = model_adapter
+        self.routine_repo = routine_repo or RoutineRepository(session_repo.db_path)
 
         # Core subsystems
         self.semaphore = semaphore or InferenceSemaphore(max_concurrency=config.max_concurrency)
@@ -141,15 +147,17 @@ class AgentOSKernel:
             recipe_repo=recipe_repo,
         )
 
-        # Scheduler with completion signaling
+        # Scheduler with completion signaling and persistence (H6)
         signaling_sched_dispatcher = _SchedulerSignalingDispatcher(
             dispatcher=self.dispatcher,
             signaler=self.signaler,
             session_repo=self.session_repo,
+            tools=self.tools,
         )
         self.scheduler = EmbeddedSchedulerDaemon(
             dispatcher=signaling_sched_dispatcher,  # type: ignore[arg-type]
             semaphore=self.semaphore,
+            routine_repo=self.routine_repo,
         )
 
         # Fact prefetcher
@@ -308,7 +316,7 @@ class AgentOSKernel:
         response_text = "".join(response_parts) or final_turn_content
         if not response_text and last_error:
             response_text = f"Error during turn: {last_error}"
-        nudges = self.signaler.poll_ambient_nudges()
+        nudges = self.signaler.poll_ambient_nudges(session_id=request.session_id)
 
         return TurnResponse(
             session_id=request.session_id,

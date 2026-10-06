@@ -3,10 +3,11 @@
 import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import Any
 
 
 class InferenceSemaphore:
-    """Manages inference worker concurrency and dynamic quota limits."""
+    """Manages inference worker concurrency and dynamic quota limits with task reentrancy."""
 
     def __init__(self, max_concurrency: int = 1) -> None:
         if max_concurrency < 1:
@@ -14,6 +15,7 @@ class InferenceSemaphore:
         self._max_concurrency: int = max_concurrency
         self._active_workers: int = 0
         self._waiters: list[asyncio.Future[None]] = []
+        self._task_counts: dict[asyncio.Task[Any], int] = {}
 
     @property
     def max_concurrency(self) -> int:
@@ -42,11 +44,24 @@ class InferenceSemaphore:
 
     @asynccontextmanager
     async def acquire(self) -> AsyncIterator[None]:
-        """Async context manager to acquire an execution slot."""
+        """Async context manager to acquire an execution slot, reentrant per asyncio Task."""
+        loop = asyncio.get_running_loop()
+        task = asyncio.current_task(loop)
+
+        # Reentrant acquire within the same task
+        if task is not None and task in self._task_counts:
+            self._task_counts[task] += 1
+            try:
+                yield
+            finally:
+                self._task_counts[task] -= 1
+                if self._task_counts[task] == 0:
+                    del self._task_counts[task]
+            return
+
         if self._active_workers < self._max_concurrency:
             self._active_workers += 1
         else:
-            loop = asyncio.get_running_loop()
             fut: asyncio.Future[None] = loop.create_future()
             self._waiters.append(fut)
             try:
@@ -59,8 +74,13 @@ class InferenceSemaphore:
                     self._wake_up_waiters()
                 raise
 
+        if task is not None:
+            self._task_counts[task] = 1
+
         try:
             yield
         finally:
+            if task is not None:
+                self._task_counts.pop(task, None)
             self._active_workers -= 1
             self._wake_up_waiters()

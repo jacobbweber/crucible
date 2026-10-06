@@ -42,7 +42,7 @@ async def _chat_turn(ctx: ReplContext, text: str) -> None:
             sys.stdout.flush()
     else:
         ctx.console.write("(empty response)", "dim")
-    for nudge in ctx.kernel.signaler.poll_ambient_nudges():
+    for nudge in ctx.kernel.signaler.poll_ambient_nudges(session_id=ctx.session_id):
         ctx.console.warn(f"🔔 {nudge.short_notice}")
 
 

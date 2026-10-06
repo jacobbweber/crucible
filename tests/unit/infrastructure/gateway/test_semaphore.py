@@ -45,5 +45,20 @@ async def test_semaphore_parallel_profile() -> None:
             await asyncio.sleep(0.05)
 
     await asyncio.gather(worker(), worker())
-
     assert max_observed_concurrency == 2
+
+
+@pytest.mark.asyncio
+async def test_semaphore_task_reentrancy() -> None:
+    """Verify max_concurrency=1 allows reentrant acquisition within the same task."""
+    semaphore = InferenceSemaphore(max_concurrency=1)
+
+    async with semaphore.acquire():
+        assert semaphore.active_workers == 1
+        # Nested acquire within the exact same asyncio task should not block
+        async with semaphore.acquire():
+            assert semaphore.active_workers == 1
+        assert semaphore.active_workers == 1
+
+    assert semaphore.active_workers == 0
+
