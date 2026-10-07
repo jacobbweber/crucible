@@ -21,6 +21,15 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     p.add_argument("--think", choices=["on", "off", "default"], default=None)
     p.add_argument("--policy", default="balanced", choices=["strict", "balanced", "autonomous"])
     p.add_argument("--name", default="Companion", help="companion display name")
+    p.add_argument("--mcp", action="store_true", help="run headless as an MCP server")
+    p.add_argument(
+        "--transport",
+        choices=["stdio", "sse"],
+        default="stdio",
+        help="MCP transport protocol (default: stdio)",
+    )
+    p.add_argument("--host", default="127.0.0.1", help="MCP SSE host (default: 127.0.0.1)")
+    p.add_argument("--port", type=int, default=8000, help="MCP SSE port (default: 8000)")
     return p.parse_args(argv)
 
 
@@ -96,6 +105,24 @@ def main(argv: list[str] | None = None) -> None:
     )
     runtime.tracer.enabled = args.trace
     session_id = args.session or runtime.kernel.session_repo.create_session("REPL").session_id
+
+    if args.mcp:
+        from agent_os.mcp.transport import run_mcp_server
+
+        console.info(
+            f"agent-os MCP gateway | data={runtime.data_dir} | transport={args.transport} "
+            f"| node={args.name}"
+        )
+        asyncio.run(
+            run_mcp_server(
+                kernel=runtime.kernel,
+                transport=args.transport,
+                host=args.host,
+                port=args.port,
+                name=args.name,
+            )
+        )
+        return
 
     console.info(f"agent-os REPL | data={runtime.data_dir}")
     console.info(
