@@ -64,10 +64,15 @@ class PromptAssembler:
 
         dispatch_instructions = (
             "Operational & Background Execution:\n"
-            "Heavy tasks (reading/writing wiki notes, flashcards, automated recipes) run in "
-            "isolated sandboxes. To dispatch an operational task to the Recipe Chamber, include:\n"
+            "- Heavy actions (reading/writing wiki notes, flashcards, automated recipes) run in "
+            "isolated sandboxes.\n"
+            "- When the user requests an operational task, system inspection, or capability "
+            "(e.g., inspecting Docker containers, external services, system operations), "
+            "DO NOT decline with 'I cannot do this'.\n"
+            "- Instead, immediately dispatch the directive:\n"
             "[DISPATCH: <task description>]\n"
-            "in your reply. The chamber will execute the task and return a completion summary."
+            "The Recipe Chamber will evaluate the request, check for capability gaps or MCP, "
+            "execute or stage an MCP capability proposal in 00_Inbox, and report back."
         )
         sections.append(dispatch_instructions)
 

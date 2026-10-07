@@ -221,14 +221,14 @@ async def test_chat_loop_token_budget_pruning(tmp_path: Path) -> None:
 
     adapter = MockModelAdapter([StreamChunk(delta="Done", finish_reason="stop")])
     config = CompanionConfig(name="Astra")
-    # Setting tight context window: 800 tokens, 200 output reserve -> history budget ~400 tokens
+    # Setting tight context window: 1000 tokens, 200 output reserve -> history budget ~450 tokens
     loop = CompanionChatLoop(
         session_id=session.session_id,
         session_repo=repo,
         model_adapter=adapter,
         config=config,
         sliding_window_size=15,
-        context_window=800,
+        context_window=1000,
         reserve_output_tokens=200,
     )
 

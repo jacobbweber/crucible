@@ -27,6 +27,7 @@ from agent_os.infrastructure.storage.routine_repo import RoutineRepository
 from agent_os.infrastructure.storage.session_repo import SessionRepository
 from agent_os.infrastructure.storage.telemetry_repo import TelemetryRepository
 from agent_os.infrastructure.wiki.store import WikiStore
+from agent_os.kernel.capability_scout import CapabilityScout
 from agent_os.kernel.chat_loop import CompanionChatLoop
 from agent_os.kernel.credential_proxy import CredentialProxyGate
 from agent_os.kernel.default_recipes import ensure_default_recipes
@@ -125,10 +126,12 @@ class AgentOSKernel:
             recipe_chamber=self.chamber,
             model_adapter=model_adapter,
         )
+        self.capability_scout = CapabilityScout(wiki_store=self.wiki_store)
         self.assembly_pipeline = JobAssemblyPipeline(
             dispatcher=self.dispatcher,
             signaler=self.signaler,
             recipe_repo=recipe_repo,
+            capability_scout=self.capability_scout,
         )
 
         # Scheduler with completion signaling and persistence (H6)

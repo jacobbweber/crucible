@@ -21,10 +21,12 @@ class JobAssemblyPipeline:
         dispatcher: ZeroCatalogDispatcher,
         signaler: CompletionSignaler,
         recipe_repo: RecipeRepository,
+        capability_scout: Any | None = None,
     ) -> None:
         self.dispatcher = dispatcher
         self.signaler = signaler
         self.recipe_repo = recipe_repo
+        self.capability_scout = capability_scout
 
     def triage_capability_gap(self, task: str, available_tools: list[str]) -> CapabilityGapReport:
         """Triage whether a task can be satisfied by catalog recipes or requires synthesis."""
@@ -81,6 +83,53 @@ class JobAssemblyPipeline:
             res = on_status(gap_report.acknowledgment)
             if inspect.iscoroutine(res):
                 await res
+
+        # 1b. Check if task targets an external domain missing from available tools
+        if self.capability_scout and gap_report.has_gap:
+            missing_domain = self.capability_scout.identify_missing_domain(
+                request.task, request.available_tools
+            )
+            if missing_domain:
+                if on_status is not None:
+                    status_msg = (
+                        f"Detected missing capability '{missing_domain}'. "
+                        "Staging MCP integration proposal in 00_Inbox..."
+                    )
+                    res = on_status(status_msg)
+                    if inspect.iscoroutine(res):
+                        await res
+
+                staged_path = self.capability_scout.stage_mcp_proposal(
+                    request.task, missing_domain
+                )
+                from agent_os.domain.dispatch import DispatchDecision, DispatchResult
+                from agent_os.domain.ipc import SubJobReturnEnvelope
+
+                envelope = SubJobReturnEnvelope(
+                    journey_id=f"gap_{request.session_id}",
+                    status="completed",
+                    summary=(
+                        f"Missing tool for '{missing_domain}'. Prepared capability proposal "
+                        f"recommending MCP over CLI tools in {staged_path}."
+                    ),
+                    artifact_paths=[staged_path],
+                    token_estimate=50,
+                )
+                dispatch_res = DispatchResult(
+                    decision=DispatchDecision(
+                        task=request.task,
+                        stage="assembled_ephemeral",
+                    ),
+                    envelope=envelope,
+                )
+                self.signaler.signal_completion(request.session_id, envelope)
+                return PipelineExecutionResult(
+                    session_id=request.session_id,
+                    task=request.task,
+                    dispatch_result=dispatch_res,
+                    gap_report=gap_report,
+                    flagged_for_graduation=False,
+                )
 
         # 2. Dispatch execution via ZeroCatalogDispatcher
         dispatch_res = await self.dispatcher.dispatch_task(
