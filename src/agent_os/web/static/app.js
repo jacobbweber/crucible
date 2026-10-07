@@ -37,38 +37,68 @@
 
   function renderMarkdown(rawText) {
     if (!rawText) return "";
-    let html = escapeHtml(rawText);
+    let html = rawText;
+
+    // Extract <think> reasoning block
+    let thinkingBlock = "";
+    html = html.replace(/<think>([\s\S]*?)<\/think>/gi, (_m, reasoning) => {
+      thinkingBlock = `<div class="reasoning-box">
+        <div class="reasoning-toggle" onclick="this.nextElementSibling.classList.toggle('hidden')">
+          <span>🧠</span> Thinking Process (Click to toggle)
+        </div>
+        <div class="reasoning-body hidden">${escapeHtml(reasoning.trim())}</div>
+      </div>`;
+      return "";
+    });
+
+    let safeHtml = escapeHtml(html.trim());
+
+    // Format [DISPATCH: task] into styled directive card
+    safeHtml = safeHtml.replace(/\[DISPATCH:\s*([^\]]+)\]/gi, (_m, task) => {
+      return `<div class="directive-card">
+        <div class="directive-header"><span class="directive-icon">⚡</span> <strong>Background Directive Dispatched</strong></div>
+        <div class="directive-body">${task.trim()}</div>
+      </div>`;
+    });
+
+    // Format [COMPLETED: summary] into styled completion card
+    safeHtml = safeHtml.replace(/\[COMPLETED:\s*([^\]]+)\]/gi, (_m, summary) => {
+      return `<div class="completion-card">
+        <div class="completion-header"><span>✅</span> <strong>Directive Completed</strong></div>
+        <div class="completion-summary">${summary.trim()}</div>
+      </div>`;
+    });
 
     // Code blocks: ```code```
-    html = html.replace(/```([a-zA-Z0-9_\-\.]*)\n([\s\S]*?)```/g, (_m, lang, code) => {
+    safeHtml = safeHtml.replace(/```([a-zA-Z0-9_\-\.]*)\n([\s\S]*?)```/g, (_m, lang, code) => {
       return `<pre><code class="language-${lang}">${code.trim()}</code></pre>`;
     });
 
     // Inline code: `code`
-    html = html.replace(/`([^`]+)`/g, "<code>$1</code>");
+    safeHtml = safeHtml.replace(/`([^`]+)`/g, "<code>$1</code>");
 
     // Bold: **text**
-    html = html.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+    safeHtml = safeHtml.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
 
     // Headings: ###, ##, #
-    html = html.replace(/^### (.*$)/gim, "<h3>$1</h3>");
-    html = html.replace(/^## (.*$)/gim, "<h2>$1</h2>");
-    html = html.replace(/^# (.*$)/gim, "<h1>$1</h1>");
+    safeHtml = safeHtml.replace(/^### (.*$)/gim, "<h3>$1</h3>");
+    safeHtml = safeHtml.replace(/^## (.*$)/gim, "<h2>$1</h2>");
+    safeHtml = safeHtml.replace(/^# (.*$)/gim, "<h1>$1</h1>");
 
     // Bullet lists: * or -
-    html = html.replace(/^\s*[-*]\s+(.*)$/gim, "<li>$1</li>");
-    html = html.replace(/(<li>[\s\S]*?<\/li>)/g, "<ul>$1</ul>");
-    html = html.replace(/<\/ul>\s*<ul>/g, "");
+    safeHtml = safeHtml.replace(/^\s*[-*]\s+(.*)$/gim, "<li>$1</li>");
+    safeHtml = safeHtml.replace(/(<li>[\s\S]*?<\/li>)/g, "<ul>$1</ul>");
+    safeHtml = safeHtml.replace(/<\/ul>\s*<ul>/g, "");
 
-    // Line breaks (convert remaining single newlines to <br> unless inside pre/ul)
-    html = html.split("\n\n").map(para => {
-      if (para.startsWith("<pre>") || para.startsWith("<ul>") || para.startsWith("<h")) {
+    // Line breaks
+    let formatted = safeHtml.split("\n\n").map(para => {
+      if (para.startsWith("<pre>") || para.startsWith("<ul>") || para.startsWith("<h") || para.startsWith("<div")) {
         return para;
       }
       return `<p>${para.replace(/\n/g, "<br>")}</p>`;
     }).join("");
 
-    return html;
+    return thinkingBlock + formatted;
   }
 
   // ---------------------------------------------------------------------------
@@ -291,12 +321,16 @@
                 toolPill.innerHTML = `<span>🔧</span> Executed tool: <strong>${escapeHtml(data.tool_name)}</strong>`;
                 bubble.parentNode.insertBefore(toolPill, bubble);
                 scrollToBottom();
-              } else if (currentEvent === "job_dispatched") {
-                const jobPill = document.createElement("div");
-                jobPill.className = "tool-pill";
-                jobPill.innerHTML = `<span>⚡</span> Dispatched background directive: <strong>${escapeHtml(data.task)}</strong>`;
-                bubble.parentNode.insertBefore(jobPill, bubble);
+              } else if (currentEvent === "status") {
+                const statusPill = document.createElement("div");
+                statusPill.className = "status-pill";
+                statusPill.innerHTML = `<span>⏳</span> ${escapeHtml(data.message)}`;
+                bubble.parentNode.insertBefore(statusPill, bubble);
                 scrollToBottom();
+              } else if (currentEvent === "job_dispatched") {
+                if (data.summary) {
+                  addAmbientNotice(`Directive Finished: ${data.summary}`);
+                }
               } else if (currentEvent === "ambient_nudge") {
                 addAmbientNotice(data.notice);
               } else if (currentEvent === "error") {

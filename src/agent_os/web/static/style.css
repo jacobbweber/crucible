@@ -517,6 +517,79 @@ html, body {
   margin-bottom: 8px;
 }
 
+/* Background Directive & Completion Cards */
+.directive-card {
+  background: #141829;
+  border: 1px solid #3b4261;
+  border-left: 4px solid var(--accent-primary);
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin: 8px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.directive-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.82rem;
+  color: #a5b4fc;
+}
+
+.directive-body {
+  font-size: 0.9rem;
+  color: var(--text-main);
+  line-height: 1.4;
+}
+
+.completion-card {
+  background: #0d2218;
+  border: 1px solid #165b39;
+  border-left: 4px solid var(--accent-success);
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin: 8px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.completion-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--accent-success);
+}
+
+.completion-summary {
+  font-size: 0.88rem;
+  color: #d1fae5;
+  line-height: 1.4;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #1e1b4b;
+  border: 1px solid #4338ca;
+  color: #c7d2fe;
+  padding: 4px 10px;
+  border-radius: 14px;
+  font-size: 0.76rem;
+  margin-bottom: 8px;
+  animation: pulse-border 1.5s infinite;
+}
+
+@keyframes pulse-border {
+  0%, 100% { border-color: #4338ca; }
+  50% { border-color: #818cf8; }
+}
+
 /* Markdown formatting inside assistant bubble */
 .message-bubble pre {
   background: #0a0c10;

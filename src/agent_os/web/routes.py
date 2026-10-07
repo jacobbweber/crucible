@@ -99,9 +99,17 @@ def build_api_routes(kernel: AgentOSKernel) -> list[Route]:
                             "success": getattr(event.tool_result, "success", True),
                         }
                         yield f"event: tool_executed\ndata: {json.dumps(tool_data)}\n\n"
+                    elif event.event_type == "status":
+                        s_data = json.dumps({"message": event.delta})
+                        yield f"event: status\ndata: {s_data}\n\n"
                     elif event.event_type == "job_dispatched":
+                        job = event.dispatched_job
+                        disp_res = getattr(job, "dispatch_result", None)
+                        env = getattr(disp_res, "envelope", None)
                         job_data = {
-                            "task": getattr(event.dispatched_job, "task", "job"),
+                            "task": getattr(job, "task", "directive"),
+                            "status": getattr(env, "status", "completed") if env else "completed",
+                            "summary": getattr(env, "summary", "") if env else "",
                         }
                         yield f"event: job_dispatched\ndata: {json.dumps(job_data)}\n\n"
                     elif event.event_type == "error":

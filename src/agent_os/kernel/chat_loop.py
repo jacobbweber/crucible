@@ -194,8 +194,10 @@ class CompanionChatLoop:
             )
 
             accumulated_text_parts: list[str] = []
+            accumulated_reasoning_parts: list[str] = []
             async for chunk in self.model_adapter.complete(request):
                 if chunk.reasoning:
+                    accumulated_reasoning_parts.append(chunk.reasoning)
                     yield StreamTurnEvent(
                         event_type="thinking",
                         reasoning=chunk.reasoning,
@@ -210,12 +212,7 @@ class CompanionChatLoop:
                     )
 
             accumulated_text = "".join(accumulated_text_parts)
-            assistant_turn = self.session_repo.append_turn(
-                session_id=self.session_id,
-                role="assistant",
-                content=accumulated_text,
-                token_count=estimate_tokens(accumulated_text),
-            )
+            completion_summaries: list[str] = []
 
             if self.job_dispatcher:
                 tasks = extract_dispatch_directives(accumulated_text)
@@ -238,6 +235,13 @@ class CompanionChatLoop:
                             ack = getattr(gap_rep, "acknowledgment", None)
                             if ack and ack not in status_msgs:
                                 yield StreamTurnEvent(event_type="status", delta=ack)
+
+                        disp_res = getattr(job_res, "dispatch_result", None)
+                        envelope = getattr(disp_res, "envelope", None)
+                        if envelope and getattr(envelope, "summary", ""):
+                            comp_text = f"[COMPLETED: {envelope.summary}]"
+                            completion_summaries.append(comp_text)
+                            yield StreamTurnEvent(event_type="delta", delta=f"\n\n{comp_text}")
 
                         yield StreamTurnEvent(
                             event_type="job_dispatched",
@@ -263,6 +267,22 @@ class CompanionChatLoop:
                             event_type="error",
                             error_message=f"Tool execution error: {exc}",
                         )
+
+            final_content = accumulated_text
+            if completion_summaries:
+                final_content += "\n\n" + "\n\n".join(completion_summaries)
+
+            if accumulated_reasoning_parts and "<think>" not in final_content:
+                reasoning_str = "".join(accumulated_reasoning_parts).strip()
+                if reasoning_str:
+                    final_content = f"<think>\n{reasoning_str}\n</think>\n\n{final_content}"
+
+            assistant_turn = self.session_repo.append_turn(
+                session_id=self.session_id,
+                role="assistant",
+                content=final_content,
+                token_count=estimate_tokens(final_content),
+            )
 
             yield StreamTurnEvent(
                 event_type="completed",
