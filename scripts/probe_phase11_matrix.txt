@@ -1,0 +1,7 @@
+/recipe list
+/tools
+/tool telemetry_get_health_summary '{"hours": 24}'
+/tool session_search_history '{"query": "system"}'
+/job audit system health vitals and diagnose anomalies
+Hello! Please give a one-sentence summary of your operational capabilities.
+/quit

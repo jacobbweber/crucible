@@ -30,6 +30,7 @@ Per `.agents/rules/live-testing.md`, every live test and smoke verification must
 | 8 | **Signaling & Scheduler** | Background routines, session isolation | Multi-session nudge isolation, persistence across restarts, routine catch-up | H5, H6, M1 | ✅ Complete |
 | 9 | **Education Engine** | SM-2 spaced repetition, pedagogical stages | Card review intervals, skill advancement via tool invocation | M3 | ✅ Complete |
 | 10 | **End-to-End System** | Complete user day-in-the-life | Complex conversational task dispatching background worker, ambient nudge return | C4 | ✅ Complete |
+| 11 | **Observability & History** | Local MELT, dual-DB search, RCA staging | 50 concurrent workers, hot/cold 90d archiving, health audit, live multi-target matrix | H9, H10, M9, M10 | ✅ Complete |
 
 ---
 
@@ -51,6 +52,8 @@ Severity: 🔴 Critical · 🟠 High · 🟡 Medium · ⚪ Low
 | **H6** | 🟠 | Scheduler | In-memory routines lose state on restart; catch-up logic unwired. | ✅ Fixed (Phase 8) |
 | **H7** | 🟠 | Concurrency | Inference semaphore only guards scheduler, bypassing chat & manual jobs. | ✅ Fixed (Phase 1) |
 | **H8** | 🟠 | Wiki | Inbox note graduation silently overwrites same-named files. | ✅ Fixed (Phase 3) |
+| **H9** | 🟠 | Warehouse | `WikiStore` initialized both `01_Notes` and `01_Knowledge`, diverting graduation. | ✅ Fixed (Phase 11) |
+| **H10** | 🟠 | Telemetry | Unbounded `telemetry.db` span growth on long-running nodes. | ✅ Fixed (Phase 11) |
 | **M1** | 🟡 | Layering | Raw SQL executed from kernel signaling dispatcher. | ✅ Fixed (Phase 5) |
 | **M2** | 🟡 | Chat | Foreign key violations on unknown session swallowed silently. | ✅ Fixed (Phase 5) |
 | **M3** | 🟡 | Education | Education datetime parsing and pedagogical advancement unwired. | ✅ Fixed (Phase 9) |
@@ -59,6 +62,8 @@ Severity: 🔴 Critical · 🟠 High · 🟡 Medium · ⚪ Low
 | **M6** | 🟡 | Runner | Execution timeouts passed but not enforced. | ✅ Fixed (Phase 6) |
 | **M7** | 🟡 | Config | `AGENT_OS_DATA_DIR` mismatch in `.env.example`. | ✅ Fixed (Phase 0) |
 | **M8** | 🟡 | Clean Code | Multiple files exceeding 300-line modularity threshold. | ✅ Fixed |
+| **M9** | 🟡 | Signaling | RCA postmortems staged in `00_Inbox` without ambient companion notification. | ✅ Fixed (Phase 11) |
+| **M10** | 🟡 | Retention | Cold-archived sessions (>90d) inaccessible to conversation queries. | ✅ Fixed (Phase 11) |
 | **L1** | ⚪ | Wiki | Linear file search in wiki store; wiki_read calls private _resolve_safe_path. | ✅ Addressed (Phase 3) |
 | **L2** | ⚪ | Docs | Missing operational and architecture documentation. | ✅ Complete |
 | **G1** | 🟠 | Gateway | Reasoning models exhaust reply budget if `max_tokens` is constrained. | ✅ Fixed (Phase 0/1) |
