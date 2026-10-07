@@ -16,12 +16,19 @@ class WikiStore:
 
     def __init__(self, root_dir: Path) -> None:
         self.root_dir = root_dir.resolve()
+        is_wh = self.root_dir.name == "warehouse"
+        has_k = (self.root_dir / ProtectedFolder.KNOWLEDGE.value).exists()
+        has_n = (self.root_dir / ProtectedFolder.NOTES.value).exists()
+        self.knowledge_folder = (
+            ProtectedFolder.KNOWLEDGE.value
+            if (is_wh or (has_k and not has_n))
+            else ProtectedFolder.NOTES.value
+        )
 
     def init_vault(self) -> None:
         """Idempotently initialize all protected vault directories."""
         for folder in ProtectedFolder:
             (self.root_dir / folder.value).mkdir(parents=True, exist_ok=True)
-
         templates_dir = self.root_dir / ProtectedFolder.RESOURCES.value / "templates"
         templates_dir.mkdir(parents=True, exist_ok=True)
 
@@ -104,9 +111,8 @@ class WikiStore:
     def list_category(self, category_folder: ProtectedFolder) -> list[str]:
         """Return relative file paths within the designated protected root."""
         target_val = category_folder.value
-        if target_val == ProtectedFolder.NOTES.value and not (self.root_dir / target_val).exists():
-            if (self.root_dir / ProtectedFolder.KNOWLEDGE.value).exists():
-                target_val = ProtectedFolder.KNOWLEDGE.value
+        if target_val in (ProtectedFolder.NOTES.value, ProtectedFolder.KNOWLEDGE.value):
+            target_val = self.knowledge_folder
         folder_path = self.root_dir / target_val
         if not folder_path.exists():
             return []
@@ -129,9 +135,8 @@ class WikiStore:
             List of (relative_path, snippet) tuples.
         """
         target_val = folder.value
-        if target_val == ProtectedFolder.NOTES.value and not (self.root_dir / target_val).exists():
-            if (self.root_dir / ProtectedFolder.KNOWLEDGE.value).exists():
-                target_val = ProtectedFolder.KNOWLEDGE.value
+        if target_val in (ProtectedFolder.NOTES.value, ProtectedFolder.KNOWLEDGE.value):
+            target_val = self.knowledge_folder
         folder_path = self.root_dir / target_val
         if not folder_path.exists():
             return []
@@ -245,14 +250,8 @@ class WikiStore:
             elif len(cat_parts) > 2:
                 reasons.append(f"Category '{clean_category}' exceeds maximum depth of 2 folders")
 
-            # Verify destination folder does not escape 01_Knowledge or 01_Notes
-            target_folder = (
-                ProtectedFolder.KNOWLEDGE.value
-                if (self.root_dir / ProtectedFolder.KNOWLEDGE.value).exists()
-                and not (self.root_dir / ProtectedFolder.NOTES.value).exists()
-                else ProtectedFolder.NOTES.value
-            )
-            notes_root = (self.root_dir / target_folder).resolve()
+            # Verify destination folder does not escape knowledge root
+            notes_root = (self.root_dir / self.knowledge_folder).resolve()
             dest_dir = (notes_root / clean_category).resolve()
             try:
                 dest_dir.relative_to(notes_root)
