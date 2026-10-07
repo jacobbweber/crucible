@@ -12,6 +12,7 @@ from agent_os.domain.tools import (
 )
 from agent_os.infrastructure.storage.telemetry_repo import TelemetryRepository
 from agent_os.kernel.rca_stager import RcaProposalStager
+from agent_os.kernel.signaling import CompletionSignaler
 from agent_os.kernel.telemetry_collector import TelemetryCollector
 
 
@@ -24,11 +25,13 @@ class TelemetryToolSuite:
         rca_stager: RcaProposalStager,
         collector: TelemetryCollector | None = None,
         db_paths: list[Path] | None = None,
+        signaler: CompletionSignaler | None = None,
     ) -> None:
         self.repo = telemetry_repo
         self.stager = rca_stager
         self.collector = collector or TelemetryCollector(telemetry_repo)
         self.db_paths = db_paths or []
+        self.signaler = signaler
 
     def get_definitions(self) -> list[ToolDefinition]:
         """Return tool definitions and schemas for observability tools."""
@@ -97,6 +100,20 @@ class TelemetryToolSuite:
                         required=False,
                         default="warning",
                     ),
+                ],
+            ),
+            ToolDefinition(
+                name="telemetry_prune_old_records",
+                description="Prune telemetry metrics, events, and spans older than retention_days.",
+                action_tier=ActionTier.DESTRUCTIVE,
+                parameters=[
+                    ToolParameterSchema(
+                        name="retention_days",
+                        type_name="integer",
+                        description="Days of history to retain (default 30).",
+                        required=False,
+                        default=30,
+                    )
                 ],
             ),
         ]
@@ -169,6 +186,12 @@ class TelemetryToolSuite:
                 suggested_remediation=suggested_fix,
                 severity=severity,
             )
+            if self.signaler is not None:
+                self.signaler.signal_discovery(
+                    session_id="",
+                    message=f"I staged an RCA postmortem proposal in 00_Inbox: {title}",
+                    pattern_id="rca_proposal",
+                )
             return ToolExecutionResult(
                 tool_name="telemetry_stage_rca",
                 success=True,
@@ -180,4 +203,21 @@ class TelemetryToolSuite:
                 success=False,
                 output="",
                 error=f"Failed to stage RCA proposal: {exc}",
+            )
+
+    def telemetry_prune_old_records(self, retention_days: int = 30) -> ToolExecutionResult:
+        """Prune telemetry metrics, events, and spans older than retention_days."""
+        try:
+            count = self.repo.prune_old_telemetry(retention_days=retention_days)
+            return ToolExecutionResult(
+                tool_name="telemetry_prune_old_records",
+                success=True,
+                output=f"Successfully pruned {count} records older than {retention_days} days.",
+            )
+        except Exception as exc:
+            return ToolExecutionResult(
+                tool_name="telemetry_prune_old_records",
+                success=False,
+                output="",
+                error=f"Failed to prune telemetry: {exc}",
             )

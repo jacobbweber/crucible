@@ -12,6 +12,7 @@ class CompletionSignaler:
     def __init__(self) -> None:
         self._nudge_queue: list[AmbientNudge] = []
         self._deferred_buffers: dict[str, list[SubJobReturnEnvelope]] = {}
+        self._discovery_notices: list[str] = []
 
     def signal_completion(self, session_id: str, envelope: SubJobReturnEnvelope) -> AmbientNudge:
         """Signal completion across both ambient UI and deferred prompt channels."""
@@ -48,6 +49,7 @@ class CompletionSignaler:
             short_notice=message[:120],
         )
         self._nudge_queue.append(nudge)
+        self._discovery_notices.append(f"- [Discovery Notice] {message}")
         return nudge
 
     def poll_ambient_nudges(
@@ -88,15 +90,19 @@ class CompletionSignaler:
         return envelopes
 
     def format_deferred_prompt_block(self, session_id: str) -> str:
-        """Drain deferred envelopes and format as an XML block for prompt injection."""
+        """Drain deferred envelopes and discovery notices as an XML block for prompt injection."""
         envelopes = self.drain_deferred_completions(session_id)
-        if not envelopes:
+        notices = list(self._discovery_notices)
+        self._discovery_notices.clear()
+
+        if not envelopes and not notices:
             return ""
 
         lines = [
             f"- [Status: {env.status.upper()}] Journey {env.journey_id}: {env.summary}"
             for env in envelopes
         ]
+        lines.extend(notices)
         return "\n".join(["<background_completions>", *lines, "</background_completions>"])
 
     def get_deferred_buffer(self, session_id: str) -> DeferredCompletionBuffer:

@@ -29,6 +29,7 @@ from agent_os.infrastructure.storage.telemetry_repo import TelemetryRepository
 from agent_os.infrastructure.wiki.store import WikiStore
 from agent_os.kernel.chat_loop import CompanionChatLoop
 from agent_os.kernel.credential_proxy import CredentialProxyGate
+from agent_os.kernel.default_routines import ensure_default_routines
 from agent_os.kernel.dispatcher import ZeroCatalogDispatcher
 from agent_os.kernel.education_tools import EducationToolSuite
 from agent_os.kernel.fact_prefetcher import FactPrefetcher
@@ -39,6 +40,7 @@ from agent_os.kernel.recipe_chamber import RecipeChamber
 from agent_os.kernel.runner import NativeRunner
 from agent_os.kernel.scheduler import EmbeddedSchedulerDaemon
 from agent_os.kernel.scheduler_dispatcher import SchedulerSignalingDispatcher
+from agent_os.kernel.session_tools import SessionToolSuite
 from agent_os.kernel.signaling import CompletionSignaler
 from agent_os.kernel.srs_engine import SRSEngine
 from agent_os.kernel.telemetry_collector import TelemetryCollector
@@ -77,6 +79,7 @@ class AgentOSKernel:
         )
         self.rca_stager = RcaProposalStager(wiki_store=wiki_store)
         self.collector = TelemetryCollector(self.telemetry_repo)
+        self.signaler = CompletionSignaler()
 
         # Core subsystems
         self.semaphore = semaphore or InferenceSemaphore(max_concurrency=config.max_concurrency)
@@ -87,8 +90,9 @@ class AgentOSKernel:
         self.education_tools = EducationToolSuite(
             education_repo=education_repo, srs_engine=self.srs_engine
         )
+        self.session_tools = SessionToolSuite(session_repo=session_repo)
         self.telemetry_tools = TelemetryToolSuite(
-            self.telemetry_repo, self.rca_stager, collector=self.collector
+            self.telemetry_repo, self.rca_stager, collector=self.collector, signaler=self.signaler
         )
 
         # Tools registration
@@ -115,7 +119,6 @@ class AgentOSKernel:
         )
 
         # Signaling & Dispatch
-        self.signaler = CompletionSignaler()
         self.dispatcher = ZeroCatalogDispatcher(
             recipe_repo=recipe_repo,
             recipe_chamber=self.chamber,
@@ -139,13 +142,20 @@ class AgentOSKernel:
             semaphore=self.semaphore,
             routine_repo=self.routine_repo,
         )
+        ensure_default_routines(self.routine_repo)
 
         # Fact prefetcher
         self.fact_prefetcher = FactPrefetcher(facts_repo=facts_repo)
 
     def _register_default_tools(self) -> None:
-        """Register built-in wiki, education, and telemetry tools."""
-        for suite in (self.wiki_tools, self.education_tools, self.telemetry_tools):
+        """Register built-in wiki, education, telemetry, and session tools."""
+        suites = (
+            self.wiki_tools,
+            self.education_tools,
+            self.telemetry_tools,
+            self.session_tools,
+        )
+        for suite in suites:
             for defn in suite.get_definitions():
                 fn = getattr(suite, defn.name, None)
                 if fn:
@@ -209,12 +219,8 @@ class AgentOSKernel:
             ToolCallRequest(tool_name=tool_name, parameters=params, action_tier=tier)
         )
         if decision.decision == PolicyDecisionType.BLOCK or decision.requires_prompt:
-            return ToolExecutionResult(
-                tool_name=tool_name,
-                success=False,
-                output="",
-                error=f"Blocked by policy gate: {decision.reason or 'Action rejected'}",
-            )
+            err = f"Blocked by policy gate: {decision.reason or 'Action rejected'}"
+            return ToolExecutionResult(tool_name=tool_name, success=False, output="", error=err)
         if tool_name not in self.tool_dispatcher:
             return ToolExecutionResult(
                 tool_name=tool_name, success=False, output="", error=f"Tool '{tool_name}' not found"
@@ -255,7 +261,7 @@ class AgentOSKernel:
             events.append(event)
             if event.event_type == "delta":
                 response_parts.append(event.delta)
-            elif event.event_type == "job_dispatched" and event.dispatched_job:
+            elif event.event_type == "job_dispatched":
                 if isinstance(event.dispatched_job, PipelineExecutionResult):
                     dispatched_subjobs.append(event.dispatched_job)
             elif event.event_type == "completed" and event.turn:
@@ -266,7 +272,6 @@ class AgentOSKernel:
         response_text = "".join(response_parts) or final_turn_content
         if not response_text and last_error:
             response_text = f"Error during turn: {last_error}"
-        nudges = self.signaler.poll_ambient_nudges(session_id=request.session_id)
 
         return TurnResponse(
             session_id=request.session_id,
@@ -274,7 +279,7 @@ class AgentOSKernel:
             stream_events=events,
             recalled_facts_count=facts_payload.recalled_count,
             dispatched_subjobs=dispatched_subjobs,
-            ambient_nudges=nudges,
+            ambient_nudges=self.signaler.poll_ambient_nudges(session_id=request.session_id),
         )
 
     async def execute_job(
