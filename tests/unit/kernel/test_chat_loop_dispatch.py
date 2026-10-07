@@ -38,7 +38,7 @@ def test_extract_directives_parsing() -> None:
     text = (
         "Understood. Starting background tasks:\n"
         "[DISPATCH: Index all inbox notes for graduation]\n"
-        "[TOOL: wiki_write {\"path\": \"01_Notes/test.md\", \"tags\": [\"ai\", \"local\"]}]\n"
+        '[TOOL: wiki_write {"path": "01_Notes/test.md", "tags": ["ai", "local"]}]\n'
     )
     dispatches = extract_dispatch_directives(text)
     assert dispatches == ["Index all inbox notes for graduation"]
@@ -104,7 +104,7 @@ async def test_chat_loop_executes_tool_directive(tmp_path: Path) -> None:
 
     chunks = [
         StreamChunk(
-            delta="Reading note now. [TOOL: wiki_read {\"path\": \"01_Notes/ml.md\"}]",
+            delta='Reading note now. [TOOL: wiki_read {"path": "01_Notes/ml.md"}]',
             finish_reason="stop",
         )
     ]
@@ -113,9 +113,7 @@ async def test_chat_loop_executes_tool_directive(tmp_path: Path) -> None:
 
     tool_calls: list[tuple[str, dict[str, Any] | None]] = []
 
-    async def mock_tool_dispatcher(
-        name: str, params: dict[str, Any] | None
-    ) -> ToolExecutionResult:
+    async def mock_tool_dispatcher(name: str, params: dict[str, Any] | None) -> ToolExecutionResult:
         tool_calls.append((name, params))
         return ToolExecutionResult(tool_name=name, success=True, output="Note content here")
 

@@ -142,9 +142,7 @@ class NativeRunner:
         tools_block = format_tools_prompt(request.tools)
         system_content = request.system_prompt
         if tools_block:
-            system_content = (
-                f"{system_content}\n\n{tools_block}" if system_content else tools_block
-            )
+            system_content = f"{system_content}\n\n{tools_block}" if system_content else tools_block
         if system_content:
             messages.append(ChatMessage(role="system", content=system_content))
         messages.append(ChatMessage(role="user", content=request.task))

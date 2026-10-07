@@ -103,13 +103,13 @@ async def test_end_to_end_conversational_job_dispatch(tmp_path: Path) -> None:
     responses = [
         "I will summarize the notes for you.\n[DISPATCH: summarize wiki notes]",
         (
-            '```json\n'
-            '{\n'
+            "```json\n"
+            "{\n"
             '  "thought": "Reading ML notes from wiki.",\n'
             '  "action": "wiki_read",\n'
             '  "parameters": {"path": "01_Notes/ml_basics.md"}\n'
-            '}\n'
-            '```'
+            "}\n"
+            "```"
         ),
         "Found 1 note covering neural network fundamentals.",
         "The background worker finished. Found 1 note covering neural network fundamentals.",

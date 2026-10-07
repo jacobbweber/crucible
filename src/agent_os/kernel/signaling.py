@@ -33,6 +33,23 @@ class CompletionSignaler:
 
         return nudge
 
+    def signal_discovery(
+        self,
+        session_id: str,
+        message: str,
+        pattern_id: str = "pattern_scout",
+    ) -> AmbientNudge:
+        """Signal a discovered pattern or capability candidate for ambient notification."""
+        nudge = AmbientNudge(
+            nudge_id=str(uuid.uuid4()),
+            session_id=session_id,
+            journey_id=pattern_id,
+            status="discovery",
+            short_notice=message[:120],
+        )
+        self._nudge_queue.append(nudge)
+        return nudge
+
     def poll_ambient_nudges(
         self, session_id: str | None = None, limit: int = 10
     ) -> list[AmbientNudge]:
@@ -54,8 +71,7 @@ class CompletionSignaler:
         remaining: list[AmbientNudge] = []
         for nudge in self._nudge_queue:
             if len(matched) < limit and (
-                nudge.session_id == session_id
-                or nudge.session_id in ("", "system_scheduler")
+                nudge.session_id == session_id or nudge.session_id in ("", "system_scheduler")
             ):
                 matched.append(nudge)
             else:

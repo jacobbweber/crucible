@@ -1,4 +1,6 @@
-"""End-to-end dynamic job assembly line and execution pipeline orchestrator."""
+import inspect
+from collections.abc import Callable
+from typing import Any
 
 from agent_os.domain.pipeline import (
     CapabilityGapReport,
@@ -35,6 +37,11 @@ class JobAssemblyPipeline:
             is_match = True
             top_recipe = matches[0].recipe
 
+        ack_message = (
+            f"I don't have a saved recipe for '{task}' yet. "
+            "I'm assembling an on-the-fly task brief and selecting the right tools now..."
+        )
+
         if is_match and top_recipe is not None:
             available_set = set(available_tools)
             required = top_recipe.metadata.required_tools
@@ -51,6 +58,7 @@ class JobAssemblyPipeline:
                 missing_capabilities=missing,
                 has_gap=True,
                 resolution_strategy="ephemeral_synthesis",
+                acknowledgment=ack_message,
             )
 
         return CapabilityGapReport(
@@ -58,12 +66,21 @@ class JobAssemblyPipeline:
             missing_capabilities=[],
             has_gap=True,
             resolution_strategy="ephemeral_synthesis",
+            acknowledgment=ack_message,
         )
 
-    async def run_pipeline(self, request: JobAssemblyRequest) -> PipelineExecutionResult:
+    async def run_pipeline(
+        self,
+        request: JobAssemblyRequest,
+        on_status: Callable[[str], Any] | None = None,
+    ) -> PipelineExecutionResult:
         """Execute end-to-end job assembly, dispatch, signaling, and graduation triage."""
         # 1. Assess capability gaps
         gap_report = self.triage_capability_gap(request.task, request.available_tools)
+        if gap_report.has_gap and gap_report.acknowledgment and on_status is not None:
+            res = on_status(gap_report.acknowledgment)
+            if inspect.iscoroutine(res):
+                await res
 
         # 2. Dispatch execution via ZeroCatalogDispatcher
         dispatch_res = await self.dispatcher.dispatch_task(

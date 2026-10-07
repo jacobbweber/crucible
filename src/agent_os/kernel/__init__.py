@@ -8,11 +8,13 @@ from agent_os.kernel.education_tools import EducationToolSuite
 from agent_os.kernel.fact_prefetcher import FactPrefetcher
 from agent_os.kernel.graduation import GraduationService
 from agent_os.kernel.master_kernel import AgentOSKernel
+from agent_os.kernel.pattern_scout import PatternScout
 from agent_os.kernel.pedagogical import PedagogicalOrchestrator
 from agent_os.kernel.pipeline import JobAssemblyPipeline
 from agent_os.kernel.policy_gate import ToolPolicyGate
 from agent_os.kernel.prompt_assembler import PromptAssembler
 from agent_os.kernel.recipe_chamber import RecipeChamber
+from agent_os.kernel.recipe_promoter import RecipePromoter
 from agent_os.kernel.return_marshaller import SubJobMarshaller
 from agent_os.kernel.runbook_parser import PocockRunbookParser
 from agent_os.kernel.runner import NativeRunner
@@ -33,10 +35,12 @@ __all__ = [
     "GraduationService",
     "JobAssemblyPipeline",
     "NativeRunner",
+    "PatternScout",
     "PedagogicalOrchestrator",
     "PocockRunbookParser",
     "PromptAssembler",
     "RecipeChamber",
+    "RecipePromoter",
     "SRSEngine",
     "SubJobMarshaller",
     "TaskBriefAssembler",

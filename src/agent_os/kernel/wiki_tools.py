@@ -293,4 +293,3 @@ class WikiToolSuite:
 
 
 WarehouseToolSuite = WikiToolSuite
-

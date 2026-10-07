@@ -295,4 +295,3 @@ class SessionRepository:
             updated_at=datetime.fromisoformat(row["updated_at"]),
             is_archived=True,
         )
-

@@ -277,4 +277,3 @@ async def test_scheduler_tick_catch_up_run_once_immediately() -> None:
     assert routine.last_run_at == now
     assert routine.next_run_at is not None
     assert routine.next_run_at > now
-

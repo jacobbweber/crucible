@@ -47,8 +47,7 @@ def test_format_tools_prompt_with_parameters() -> None:
 
 def test_parse_react_response_standard_json() -> None:
     text = (
-        '{"thought": "Searching docs", "action": "wiki_search", '
-        '"parameters": {"query": "python"}}'
+        '{"thought": "Searching docs", "action": "wiki_search", "parameters": {"query": "python"}}'
     )
     thought, action, params = parse_react_response(text)
     assert thought == "Searching docs"

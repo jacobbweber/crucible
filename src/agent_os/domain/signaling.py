@@ -15,7 +15,7 @@ class AmbientNudge(BaseModel):
     nudge_id: str = Field(default_factory=lambda: str(uuid.uuid4()), min_length=1)
     session_id: str = ""
     journey_id: str = Field(min_length=1)
-    status: Literal["completed", "failed", "aborted"]
+    status: Literal["completed", "failed", "aborted", "discovery", "info"]
     short_notice: str = Field(max_length=120)
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 

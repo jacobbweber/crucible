@@ -313,4 +313,3 @@ async def test_full_system_credential_proxy_and_guardrail(tmp_path: Path) -> Non
     assert "ghp_SecretAuthTokenXYZ987" not in fail_result.error
     assert "[REDACTED_SECRET]" in fail_result.error
     assert "Connection failed for [REDACTED_SECRET] on backend" in fail_result.error
-

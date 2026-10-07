@@ -214,7 +214,6 @@ class EducationToolSuite:
             tool_name="education_advance_stage",
             success=True,
             output=(
-                f"Advanced {topic.title} to {target_stage}. "
-                f"Rubric: {rubric} Rationale: {rationale}"
+                f"Advanced {topic.title} to {target_stage}. Rubric: {rubric} Rationale: {rationale}"
             ),
         )

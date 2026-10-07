@@ -29,4 +29,3 @@ __all__ = [
     "init_recipe_db",
     "init_routine_db",
 ]
-

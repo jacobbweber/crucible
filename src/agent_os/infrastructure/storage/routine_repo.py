@@ -67,16 +67,8 @@ class RoutineRepository:
 
     @staticmethod
     def _row_to_routine(row: sqlite3.Row) -> ScheduledRoutine:
-        last_run = (
-            datetime.fromisoformat(row["last_run_at"])
-            if row["last_run_at"]
-            else None
-        )
-        next_run = (
-            datetime.fromisoformat(row["next_run_at"])
-            if row["next_run_at"]
-            else None
-        )
+        last_run = datetime.fromisoformat(row["last_run_at"]) if row["last_run_at"] else None
+        next_run = datetime.fromisoformat(row["next_run_at"]) if row["next_run_at"] else None
         return ScheduledRoutine(
             routine_id=row["routine_id"],
             name=row["name"],
@@ -202,11 +194,7 @@ class RoutineRepository:
 
         logs: list[RoutineExecutionLog] = []
         for r in rows:
-            completed = (
-                datetime.fromisoformat(r["completed_at"])
-                if r["completed_at"]
-                else None
-            )
+            completed = datetime.fromisoformat(r["completed_at"]) if r["completed_at"] else None
             logs.append(
                 RoutineExecutionLog(
                     execution_id=r["execution_id"],

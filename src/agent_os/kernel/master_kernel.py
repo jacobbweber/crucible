@@ -279,15 +279,14 @@ class AgentOSKernel:
             ambient_nudges=nudges,
         )
 
-    async def execute_job(self, session_id: str, task: str) -> PipelineExecutionResult:
+    async def execute_job(
+        self, session_id: str, task: str, on_status: Callable[[str], Any] | None = None
+    ) -> PipelineExecutionResult:
         """Dispatch background task execution through dynamic job assembly line."""
-        return await self.assembly_pipeline.run_pipeline(
-            JobAssemblyRequest(
-                session_id=session_id,
-                task=task,
-                available_tools=list(self.tools.keys()),
-            )
+        req = JobAssemblyRequest(
+            session_id=session_id, task=task, available_tools=list(self.tools.keys())
         )
+        return await self.assembly_pipeline.run_pipeline(req, on_status=on_status)
 
     async def trigger_scheduler_tick(self, now: datetime) -> list[RoutineExecutionLog]:
         """Trigger background scheduler tick and return execution audit logs."""

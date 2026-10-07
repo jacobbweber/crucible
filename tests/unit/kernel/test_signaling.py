@@ -181,4 +181,3 @@ def test_poll_ambient_nudges_session_isolation() -> None:
     polled_b = signaler.poll_ambient_nudges(session_id="session_beta")
     assert polled_b == [nudge_b]
     assert len(signaler._nudge_queue) == 0
-

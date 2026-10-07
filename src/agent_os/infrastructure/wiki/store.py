@@ -183,9 +183,7 @@ class WikiStore:
 
         return matches
 
-    def graduate_inbox(
-        self, collision_resolution: str = "rename"
-    ) -> GraduationReport:
+    def graduate_inbox(self, collision_resolution: str = "rename") -> GraduationReport:
         """Scan 00_Inbox/ and graduate valid notes into 01_Notes/{category}/.
 
         Args:
@@ -296,4 +294,3 @@ class WikiStore:
 
 
 WarehouseStore = WikiStore
-

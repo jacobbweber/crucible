@@ -61,4 +61,3 @@ async def test_semaphore_task_reentrancy() -> None:
         assert semaphore.active_workers == 1
 
     assert semaphore.active_workers == 0
-

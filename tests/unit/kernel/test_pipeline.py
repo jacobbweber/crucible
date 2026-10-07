@@ -371,4 +371,3 @@ async def test_pipeline_graduate_ineligible_rejection(tmp_path: Path) -> None:
             name="Fail",
             description="Fail",
         )
-

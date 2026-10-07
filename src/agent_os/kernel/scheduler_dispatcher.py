@@ -31,9 +31,7 @@ class SchedulerSignalingDispatcher:
     ) -> DispatchResult:
         self._session_repo.ensure_session(session_id, title=f"System Session: {session_id}")
         tools_list = available_tools if available_tools is not None else list(self._tools.keys())
-        res = await self._dispatcher.dispatch_task(
-            session_id, task, available_tools=tools_list
-        )
+        res = await self._dispatcher.dispatch_task(session_id, task, available_tools=tools_list)
         self._signaler.signal_completion(session_id, res.envelope)
         return res
 

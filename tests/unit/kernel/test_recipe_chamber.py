@@ -331,4 +331,3 @@ async def test_recipe_chamber_routes_packet_modality(tmp_path: Path) -> None:
     steps = repo.get_journey_scratchpad(envelope.journey_id)
     assert len(steps) == 3
     assert [s["node_name"] for s in steps] == ["plan", "thought", "verify"]
-

@@ -203,4 +203,3 @@ def test_education_advance_stage_validation(tmp_path: Path) -> None:
     )
     assert same_res.success is False
     assert "already at stage_1_primer" in (same_res.error or "")
-

@@ -147,4 +147,3 @@ def test_graduate_rejects_category_path_traversal(tmp_path: Path) -> None:
     assert report.failed_count == 1
     assert inbox_file.is_file()
     assert any("invalid" in r.lower() or "escape" in r.lower() for r in report.failures[0].reasons)
-

@@ -292,4 +292,3 @@ class EducationRepository:
         avg_grade = sum(grades) / len(grades)
         mastery_score = round((avg_grade / 5.0) * 100.0, 1)
         return consecutive_high, mastery_score
-

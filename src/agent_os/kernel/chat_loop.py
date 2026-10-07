@@ -1,5 +1,6 @@
 """Interactive companion session orchestrator managing turns and context sliding window."""
 
+import inspect
 import json
 import re
 from collections.abc import AsyncIterator, Callable, Coroutine
@@ -88,9 +89,7 @@ class CompanionChatLoop:
         target_model: str | None = None,
         context_window: int = 8192,
         reserve_output_tokens: int = 1024,
-        job_dispatcher: (
-            Callable[[str, str], Coroutine[Any, Any, Any]] | None
-        ) = None,
+        job_dispatcher: (Callable[..., Coroutine[Any, Any, Any]] | None) = None,
         tool_dispatcher: (
             Callable[[str, dict[str, Any] | None], Coroutine[Any, Any, Any]] | None
         ) = None,
@@ -179,9 +178,7 @@ class CompanionChatLoop:
                 - user_tokens
                 - 100,
             )
-            history_messages = self._select_history_within_budget(
-                user_turn.turn_id, history_budget
-            )
+            history_messages = self._select_history_within_budget(user_turn.turn_id, history_budget)
 
             messages: list[ChatMessage] = [
                 ChatMessage(role="system", content=assembled.rendered_prompt),
@@ -224,7 +221,24 @@ class CompanionChatLoop:
                 tasks = extract_dispatch_directives(accumulated_text)
                 for task in tasks:
                     try:
-                        job_res = await self.job_dispatcher(self.session_id, task)
+                        status_msgs: list[str] = []
+                        sig = inspect.signature(self.job_dispatcher)
+                        if "on_status" in sig.parameters:
+                            job_res = await self.job_dispatcher(
+                                self.session_id, task, on_status=status_msgs.append
+                            )
+                        else:
+                            job_res = await self.job_dispatcher(self.session_id, task)
+
+                        for msg in status_msgs:
+                            yield StreamTurnEvent(event_type="status", delta=msg)
+
+                        gap_rep = getattr(job_res, "gap_report", None)
+                        if gap_rep is not None and getattr(gap_rep, "has_gap", False):
+                            ack = getattr(gap_rep, "acknowledgment", None)
+                            if ack and ack not in status_msgs:
+                                yield StreamTurnEvent(event_type="status", delta=ack)
+
                         yield StreamTurnEvent(
                             event_type="job_dispatched",
                             dispatched_job=job_res,

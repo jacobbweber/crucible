@@ -15,6 +15,7 @@ class CapabilityGapReport(BaseModel):
     missing_capabilities: list[str] = Field(default_factory=list)
     has_gap: bool = False
     resolution_strategy: Literal["ephemeral_synthesis", "human_intervention", "none"] = "none"
+    acknowledgment: str | None = None
 
 
 class JobAssemblyRequest(BaseModel):

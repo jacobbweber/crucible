@@ -133,6 +133,22 @@ class JourneyRepository:
             raise ValueError(f"Journey not found: {journey_id}")
         return record
 
+    @staticmethod
+    def _row_to_journey(row: Any) -> JourneyRecord:
+        completed_at = datetime.fromisoformat(row["completed_at"]) if row["completed_at"] else None
+        return JourneyRecord(
+            journey_id=row["journey_id"],
+            session_id=row["session_id"],
+            task=row["task"],
+            status=row["status"],
+            summary=row["summary"],
+            artifacts=json.loads(row["artifacts_json"]),
+            state_mutations=json.loads(row["state_mutations_json"]),
+            metrics=json.loads(row["metrics_json"]),
+            created_at=datetime.fromisoformat(row["created_at"]),
+            completed_at=completed_at,
+        )
+
     def get_journey(self, journey_id: str) -> JourneyRecord | None:
         """Retrieve a journey record by ID."""
         with get_connection(self.db_path) as conn:
@@ -150,21 +166,47 @@ class JourneyRepository:
 
         if row is None:
             return None
+        return self._row_to_journey(row)
 
-        completed_at = datetime.fromisoformat(row["completed_at"]) if row["completed_at"] else None
+    def get_latest_completed_journey(self, session_id: str) -> JourneyRecord | None:
+        """Retrieve the most recent completed journey for a given session."""
+        with get_connection(self.db_path) as conn:
+            cursor = conn.execute(
+                """
+                SELECT journey_id, session_id, task, status, summary,
+                       artifacts_json, state_mutations_json, metrics_json,
+                       created_at, completed_at
+                FROM journeys
+                WHERE session_id = ? AND status = 'completed'
+                ORDER BY completed_at DESC, created_at DESC
+                LIMIT 1;
+                """,
+                (session_id,),
+            )
+            row = cursor.fetchone()
 
-        return JourneyRecord(
-            journey_id=row["journey_id"],
-            session_id=row["session_id"],
-            task=row["task"],
-            status=row["status"],
-            summary=row["summary"],
-            artifacts=json.loads(row["artifacts_json"]),
-            state_mutations=json.loads(row["state_mutations_json"]),
-            metrics=json.loads(row["metrics_json"]),
-            created_at=datetime.fromisoformat(row["created_at"]),
-            completed_at=completed_at,
-        )
+        if row is None:
+            return None
+        return self._row_to_journey(row)
+
+    def get_recent_completed_journeys(self, limit: int = 100) -> list[JourneyRecord]:
+        """Retrieve recent completed journeys across all sessions for pattern analysis."""
+        with get_connection(self.db_path) as conn:
+            cursor = conn.execute(
+                """
+                SELECT journey_id, session_id, task, status, summary,
+                       artifacts_json, state_mutations_json, metrics_json,
+                       created_at, completed_at
+                FROM journeys
+                WHERE status = 'completed'
+                ORDER BY completed_at DESC, created_at DESC
+                LIMIT ?;
+                """,
+                (limit,),
+            )
+            rows = cursor.fetchall()
+
+        return [self._row_to_journey(row) for row in rows]
 
     def get_journey_scratchpad(self, journey_id: str) -> list[dict[str, Any]]:
         """Retrieve raw step telemetry sequence for isolated audit."""

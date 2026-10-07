@@ -101,7 +101,13 @@ def parse_react_response(
                 ):
                     tool_name = data["action"].strip()
                     if tool_name.lower() in (
-                        "none", "null", "finish", "done", "stop", "final_answer", "no_tool"
+                        "none",
+                        "null",
+                        "finish",
+                        "done",
+                        "stop",
+                        "final_answer",
+                        "no_tool",
                     ):
                         return None, None, None
                     raw_params = data.get("parameters", data.get("args", {}))
@@ -127,7 +133,13 @@ def parse_react_response(
                     ):
                         tool_name = data["action"].strip()
                         if tool_name.lower() in (
-                            "none", "null", "finish", "done", "stop", "final_answer", "no_tool"
+                            "none",
+                            "null",
+                            "finish",
+                            "done",
+                            "stop",
+                            "final_answer",
+                            "no_tool",
                         ):
                             return None, None, None
                         raw_params = data.get("parameters", data.get("args", {}))

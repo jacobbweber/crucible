@@ -45,4 +45,3 @@ def test_derive_master_key_empty_passphrase_raises() -> None:
 
     with pytest.raises(ValueError, match="Passphrase must be a non-empty string"):
         derive_master_key(salt, "   ")
-

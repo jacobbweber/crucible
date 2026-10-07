@@ -92,4 +92,3 @@ def test_scrub_error_message_containing_secret(tmp_path: Path) -> None:
     assert "super_secret_token_xyz999" not in scrubbed.sanitized_text
     assert "[REDACTED_SECRET]" in scrubbed.sanitized_text
     assert scrubbed.redaction_count == 1
-

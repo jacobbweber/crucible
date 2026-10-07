@@ -148,4 +148,3 @@ def test_search_notes_matching_fields_and_limit(tmp_path: Path) -> None:
     # No match
     matches = store.search_notes("nonexistent_term")
     assert len(matches) == 0
-

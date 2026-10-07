@@ -11,7 +11,7 @@ class StreamTurnEvent(BaseModel):
     """Event emitted during interactive streaming turn execution."""
 
     event_type: Literal[
-        "delta", "completed", "error", "thinking", "job_dispatched", "tool_executed"
+        "delta", "completed", "error", "thinking", "job_dispatched", "tool_executed", "status"
     ]
     delta: str = ""
     reasoning: str = ""

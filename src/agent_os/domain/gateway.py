@@ -119,4 +119,3 @@ def estimate_tokens(text: str) -> int:
     char_est = int(len(text) / 3.5)
     word_est = len(text.split())
     return max(1, max(char_est, word_est))
-
