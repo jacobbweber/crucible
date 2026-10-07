@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Agent OS — Local Companion</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="app-layout">
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <div class="brand">
+          <span class="brand-icon">⚡</span>
+          <span class="brand-title">Agent OS</span>
+        </div>
+        <button class="btn-new-chat" id="btn-new-chat" title="Start new session">
+          <span>+</span> New Chat
+        </button>
+      </div>
+
+      <div class="session-list-container">
+        <div class="session-section-title">Recent Conversations</div>
+        <ul class="session-list" id="session-list">
+          <!-- Session items inserted here -->
+        </ul>
+      </div>
+
+      <div class="sidebar-footer">
+        <div class="health-card" id="health-card" title="Node Health Vitals">
+          <span class="health-dot" id="health-dot"></span>
+          <span class="health-text" id="health-text">Health: Checking...</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="chat-main">
+      <!-- Top Navigation Bar -->
+      <header class="chat-header">
+        <div class="header-left">
+          <button class="btn-icon mobile-menu-toggle" id="btn-menu-toggle" aria-label="Toggle Menu">
+            ☰
+          </button>
+          <h1 class="chat-title" id="chat-title">New Conversation</h1>
+        </div>
+
+        <div class="header-right">
+          <div class="status-badge" id="status-badge">Ready</div>
+          <button class="ambient-bell-btn" id="btn-ambient" title="Ambient Notifications">
+            🔔 <span class="badge-count hidden" id="ambient-badge">0</span>
+          </button>
+        </div>
+      </header>
+
+      <!-- Ambient Notifications Drawer -->
+      <div class="ambient-drawer hidden" id="ambient-drawer">
+        <div class="drawer-header">
+          <h3>Ambient Notifications & Discovered Insights</h3>
+          <button class="btn-close" id="btn-close-ambient">&times;</button>
+        </div>
+        <div class="ambient-list" id="ambient-list">
+          <div class="ambient-empty">No unread background notifications.</div>
+        </div>
+      </div>
+
+      <!-- Chat Messages Scroll Container -->
+      <section class="messages-container" id="messages-container">
+        <!-- Empty Starter State -->
+        <div class="starter-container" id="starter-container">
+          <div class="starter-hero">
+            <div class="starter-icon">🪐</div>
+            <h2>What can I help you with today?</h2>
+            <p>Your local-first companion with background task recipes and context memory.</p>
+          </div>
+          <div class="starter-prompts">
+            <button class="starter-card" data-prompt="What recipes and capabilities do you currently have registered?">
+              <strong>Check Registered Recipes</strong>
+              <span>Audit our recipes, warehouse, and tools</span>
+            </button>
+            <button class="starter-card" data-prompt="Audit your operational health and show me any error traces.">
+              <strong>Audit System Health</strong>
+              <span>Review vitals, error rates, and telemetry</span>
+            </button>
+            <button class="starter-card" data-prompt="Search our past conversations for recent project decisions.">
+              <strong>Search Dual-DB History</strong>
+              <span>Search hot and cold archived session turns</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Chat Bubbles Render Here -->
+        <div class="chat-stream" id="chat-stream"></div>
+      </section>
+
+      <!-- Input Footer -->
+      <footer class="chat-input-area">
+        <div class="input-container">
+          <textarea
+            id="chat-input"
+            placeholder="Send a message or directive to your companion..."
+            rows="1"
+          ></textarea>
+          <div class="input-actions">
+            <button class="btn-send" id="btn-send" title="Send message (Enter)">
+              <span>▲</span>
+            </button>
+          </div>
+        </div>
+        <div class="input-hint">
+          Local-first & private · Markdown supported · Shift+Enter for new line
+        </div>
+      </footer>
+    </main>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

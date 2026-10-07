@@ -1,0 +1,129 @@
+"""HTTP and Server-Sent Event (SSE) route handlers for Agent OS Web UI."""
+
+import json
+from collections.abc import AsyncGenerator
+from typing import Any
+
+from starlette.requests import Request
+from starlette.responses import JSONResponse, Response, StreamingResponse
+from starlette.routing import Route
+
+from agent_os.domain.kernel import UserTurnRequest
+from agent_os.kernel.master_kernel import AgentOSKernel
+from agent_os.web.session_queries import get_session_turn_history, list_recent_sessions
+
+
+def build_api_routes(kernel: AgentOSKernel) -> list[Route]:
+    """Construct Starlette Route instances for the Agent OS Web API."""
+    db_path = kernel.session_repo.db_path
+
+    async def get_health(_request: Request) -> JSONResponse:
+        report = kernel.collector.compile_health_report(hours=24)
+        return JSONResponse(
+            {
+                "health_score": report.health_score,
+                "error_rate_percent": report.error_rate_percent,
+                "avg_latency_ms": report.avg_latency_ms,
+                "findings": report.findings,
+            }
+        )
+
+    async def get_sessions(_request: Request) -> JSONResponse:
+        sessions = list_recent_sessions(db_path, limit=50)
+        return JSONResponse(sessions)
+
+    async def create_session(request: Request) -> JSONResponse:
+        body: dict[str, Any] = {}
+        try:
+            body = await request.json()
+        except Exception:
+            pass
+        title = body.get("title", "New Conversation")
+        sess = kernel.session_repo.create_session(title=title)
+        return JSONResponse(
+            {
+                "session_id": sess.session_id,
+                "title": sess.title,
+                "created_at": sess.created_at.isoformat(),
+            }
+        )
+
+    async def get_session_turns(request: Request) -> JSONResponse:
+        session_id = request.path_params["session_id"]
+        turns = get_session_turn_history(db_path, session_id)
+        return JSONResponse(turns)
+
+    async def get_ambient_nudges(request: Request) -> JSONResponse:
+        session_id = request.query_params.get("session_id", "default")
+        nudges = kernel.signaler.poll_ambient_nudges(session_id=session_id)
+        return JSONResponse(
+            [
+                {
+                    "nudge_id": n.nudge_id,
+                    "session_id": n.session_id,
+                    "journey_id": n.journey_id,
+                    "status": n.status,
+                    "short_notice": n.short_notice,
+                    "created_at": n.created_at.isoformat(),
+                }
+                for n in nudges
+            ]
+        )
+
+    async def chat_stream(request: Request) -> Response:
+        try:
+            body = await request.json()
+        except Exception:
+            return JSONResponse({"error": "Invalid JSON body"}, status_code=400)
+
+        session_id = body.get("session_id")
+        user_input = body.get("message", "").strip()
+        if not session_id or not user_input:
+            return JSONResponse(
+                {"error": "Both session_id and message are required"}, status_code=400
+            )
+
+        req = UserTurnRequest(session_id=session_id, user_input=user_input)
+
+        async def sse_event_generator() -> AsyncGenerator[str, None]:
+            try:
+                async for event in kernel.stream_user_turn(req):
+                    if event.event_type == "delta":
+                        yield f"event: delta\ndata: {json.dumps({'delta': event.delta})}\n\n"
+                    elif event.event_type == "thinking":
+                        t_data = json.dumps({"reasoning": event.reasoning})
+                        yield f"event: thinking\ndata: {t_data}\n\n"
+                    elif event.event_type == "tool_executed":
+                        tool_data = {
+                            "tool_name": getattr(event.tool_result, "tool_name", "tool"),
+                            "success": getattr(event.tool_result, "success", True),
+                        }
+                        yield f"event: tool_executed\ndata: {json.dumps(tool_data)}\n\n"
+                    elif event.event_type == "job_dispatched":
+                        job_data = {
+                            "task": getattr(event.dispatched_job, "task", "job"),
+                        }
+                        yield f"event: job_dispatched\ndata: {json.dumps(job_data)}\n\n"
+                    elif event.event_type == "error":
+                        err_data = json.dumps({"error": event.error_message})
+                        yield f"event: error\ndata: {err_data}\n\n"
+
+                # Check ambient nudges after the turn
+                for nudge in kernel.signaler.poll_ambient_nudges(session_id=session_id):
+                    n_data = json.dumps({"notice": nudge.short_notice})
+                    yield f"event: ambient_nudge\ndata: {n_data}\n\n"
+
+                yield f"event: done\ndata: {json.dumps({'session_id': session_id})}\n\n"
+            except Exception as exc:
+                yield f"event: error\ndata: {json.dumps({'error': str(exc)})}\n\n"
+
+        return StreamingResponse(sse_event_generator(), media_type="text/event-stream")
+
+    return [
+        Route("/api/health", get_health, methods=["GET"]),
+        Route("/api/sessions", get_sessions, methods=["GET"]),
+        Route("/api/sessions", create_session, methods=["POST"]),
+        Route("/api/sessions/{session_id}/turns", get_session_turns, methods=["GET"]),
+        Route("/api/ambient", get_ambient_nudges, methods=["GET"]),
+        Route("/api/chat/stream", chat_stream, methods=["POST"]),
+    ]

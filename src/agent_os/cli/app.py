@@ -28,8 +28,10 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         default="stdio",
         help="MCP transport protocol (default: stdio)",
     )
-    p.add_argument("--host", default="127.0.0.1", help="MCP SSE host (default: 127.0.0.1)")
+    p.add_argument("--host", default="127.0.0.1", help="Host binding (default: 127.0.0.1)")
     p.add_argument("--port", type=int, default=8000, help="MCP SSE port (default: 8000)")
+    p.add_argument("--ui", action="store_true", help="run the local companion Web UI")
+    p.add_argument("--ui-port", type=int, default=3000, help="Web UI port (default: 3000)")
     return p.parse_args(argv)
 
 
@@ -122,6 +124,15 @@ def main(argv: list[str] | None = None) -> None:
                 name=args.name,
             )
         )
+        return
+
+    if args.ui:
+        from agent_os.web.runner import run_web_server
+
+        console.info(
+            f"agent-os Web UI | data={runtime.data_dir} | http://{args.host}:{args.ui_port}"
+        )
+        run_web_server(kernel=runtime.kernel, host=args.host, port=args.ui_port)
         return
 
     console.info(f"agent-os REPL | data={runtime.data_dir}")

@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -58,13 +59,13 @@ async def test_mcp_server_telemetry_and_warehouse_tools(temp_runtime):
     server = create_mcp_server(temp_runtime.kernel, name="test-node")
 
     # 1. Telemetry vitals
-    health_res = await server.call_tool("telemetry_get_health_summary", {"hours": 24})
+    health_res: Any = await server.call_tool("telemetry_get_health_summary", {"hours": 24})
     assert not health_res.is_error
     health_data = json.loads(health_res.content[0].text)
     assert health_data["health_score"] == 100
 
     # 2. Write note to warehouse
-    write_res = await server.call_tool(
+    write_res: Any = await server.call_tool(
         "warehouse_write",
         {
             "path": "00_Inbox/test_remote_note.md",
@@ -79,7 +80,7 @@ async def test_mcp_server_telemetry_and_warehouse_tools(temp_runtime):
     assert "written" in write_res.content[0].text.lower()
 
     # 3. Read note back
-    read_res = await server.call_tool(
+    read_res: Any = await server.call_tool(
         "warehouse_read",
         {"path": "00_Inbox/test_remote_note.md", "max_lines": 50},
     )
@@ -98,7 +99,7 @@ async def test_mcp_server_session_search_tool(temp_runtime):
         sess.session_id, "user", "Searching for edge computing concepts"
     )
 
-    res = await server.call_tool(
+    res: Any = await server.call_tool(
         "session_search_history",
         {"query": "edge", "include_archive": True, "limit": 5},
     )
@@ -118,15 +119,15 @@ async def test_mcp_server_resources(temp_runtime):
     assert "telemetry://health" in resource_uris
 
     # Read health resource
-    health_res = await server.read_resource("telemetry://health")
+    health_res = list(await server.read_resource("telemetry://health"))
     assert len(health_res) == 1
-    health_json = json.loads(health_res[0].content)
+    health_json = json.loads(getattr(health_res[0], "content", "{}"))
     assert "health_score" in health_json
 
     # Read inbox resource
-    inbox_res = await server.read_resource("warehouse://inbox")
+    inbox_res = list(await server.read_resource("warehouse://inbox"))
     assert len(inbox_res) == 1
-    inbox_json = json.loads(inbox_res[0].content)
+    inbox_json = json.loads(getattr(inbox_res[0], "content", "{}"))
     assert "staged_count" in inbox_json
 
 
@@ -141,7 +142,7 @@ async def test_mcp_server_prompts(temp_runtime):
     assert "weekly_warehouse_graduation" in prompt_names
     assert "deep_topic_synthesis" in prompt_names
 
-    prompt_res = await server.get_prompt("self_health_audit")
+    prompt_res: Any = await server.get_prompt("self_health_audit")
     assert len(prompt_res.messages) == 1
     assert "health summary" in prompt_res.messages[0].content.text
 
