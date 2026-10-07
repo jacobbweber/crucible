@@ -25,6 +25,7 @@ from agent_os.infrastructure.storage.facts_repo import FactRepository
 from agent_os.infrastructure.storage.recipe_repo import RecipeRepository
 from agent_os.infrastructure.storage.routine_repo import RoutineRepository
 from agent_os.infrastructure.storage.session_repo import SessionRepository
+from agent_os.infrastructure.storage.telemetry_repo import TelemetryRepository
 from agent_os.infrastructure.wiki.store import WikiStore
 from agent_os.kernel.chat_loop import CompanionChatLoop
 from agent_os.kernel.credential_proxy import CredentialProxyGate
@@ -33,12 +34,15 @@ from agent_os.kernel.education_tools import EducationToolSuite
 from agent_os.kernel.fact_prefetcher import FactPrefetcher
 from agent_os.kernel.pipeline import JobAssemblyPipeline
 from agent_os.kernel.policy_gate import ToolPolicyGate
+from agent_os.kernel.rca_stager import RcaProposalStager
 from agent_os.kernel.recipe_chamber import RecipeChamber
 from agent_os.kernel.runner import NativeRunner
 from agent_os.kernel.scheduler import EmbeddedSchedulerDaemon
 from agent_os.kernel.scheduler_dispatcher import SchedulerSignalingDispatcher
 from agent_os.kernel.signaling import CompletionSignaler
 from agent_os.kernel.srs_engine import SRSEngine
+from agent_os.kernel.telemetry_collector import TelemetryCollector
+from agent_os.kernel.telemetry_tools import TelemetryToolSuite
 from agent_os.kernel.wiki_tools import WikiToolSuite
 
 
@@ -57,6 +61,7 @@ class AgentOSKernel:
         model_adapter: BaseModelAdapter,
         semaphore: InferenceSemaphore | None = None,
         routine_repo: RoutineRepository | None = None,
+        telemetry_repo: TelemetryRepository | None = None,
     ) -> None:
         self.config = config
         self.session_repo = session_repo
@@ -67,6 +72,11 @@ class AgentOSKernel:
         self.wiki_store = wiki_store
         self.model_adapter = model_adapter
         self.routine_repo = routine_repo or RoutineRepository(session_repo.db_path)
+        self.telemetry_repo = telemetry_repo or TelemetryRepository(
+            session_repo.db_path.parent / "telemetry.db"
+        )
+        self.rca_stager = RcaProposalStager(wiki_store=wiki_store)
+        self.collector = TelemetryCollector(self.telemetry_repo)
 
         # Core subsystems
         self.semaphore = semaphore or InferenceSemaphore(max_concurrency=config.max_concurrency)
@@ -76,6 +86,9 @@ class AgentOSKernel:
         self.srs_engine = SRSEngine()
         self.education_tools = EducationToolSuite(
             education_repo=education_repo, srs_engine=self.srs_engine
+        )
+        self.telemetry_tools = TelemetryToolSuite(
+            self.telemetry_repo, self.rca_stager, collector=self.collector
         )
 
         # Tools registration
@@ -131,8 +144,8 @@ class AgentOSKernel:
         self.fact_prefetcher = FactPrefetcher(facts_repo=facts_repo)
 
     def _register_default_tools(self) -> None:
-        """Register built-in wiki and education tools."""
-        for suite in (self.wiki_tools, self.education_tools):
+        """Register built-in wiki, education, and telemetry tools."""
+        for suite in (self.wiki_tools, self.education_tools, self.telemetry_tools):
             for defn in suite.get_definitions():
                 fn = getattr(suite, defn.name, None)
                 if fn:
@@ -174,35 +187,26 @@ class AgentOSKernel:
 
             output, error = tool_res.output, tool_res.error
             if resolved.secrets_to_scrub:
-                secrets = resolved.secrets_to_scrub
+                s = resolved.secrets_to_scrub
                 if output:
-                    output = self.credential_proxy.scrub_text(output, secrets).sanitized_text
+                    output = self.credential_proxy.scrub_text(output, s).sanitized_text
                 if error:
-                    error = self.credential_proxy.scrub_text(error, secrets).sanitized_text
+                    error = self.credential_proxy.scrub_text(error, s).sanitized_text
 
             return ToolExecutionResult(
-                tool_name=tool_name,
-                success=tool_res.success,
-                output=output,
-                error=error,
+                tool_name=tool_name, success=tool_res.success, output=output, error=error
             )
 
         return _invoker
 
     async def execute_tool(
-        self,
-        tool_name: str,
-        parameters: dict[str, Any] | None = None,
+        self, tool_name: str, parameters: dict[str, Any] | None = None
     ) -> ToolExecutionResult:
-        """Execute a tool through the full policy gate, credential proxy, and scrubbing stack."""
+        """Execute a tool through policy gate, credential proxy, and scrubbing stack."""
         params = parameters or {}
         tier = self._tool_tiers.get(tool_name, ActionTier.DESTRUCTIVE)
         decision = self.policy_gate.evaluate(
-            ToolCallRequest(
-                tool_name=tool_name,
-                parameters=params,
-                action_tier=tier,
-            )
+            ToolCallRequest(tool_name=tool_name, parameters=params, action_tier=tier)
         )
         if decision.decision == PolicyDecisionType.BLOCK or decision.requires_prompt:
             return ToolExecutionResult(
@@ -211,17 +215,11 @@ class AgentOSKernel:
                 output="",
                 error=f"Blocked by policy gate: {decision.reason or 'Action rejected'}",
             )
-
         if tool_name not in self.tool_dispatcher:
             return ToolExecutionResult(
-                tool_name=tool_name,
-                success=False,
-                output="",
-                error=f"Tool '{tool_name}' not found",
+                tool_name=tool_name, success=False, output="", error=f"Tool '{tool_name}' not found"
             )
-
-        invoker = self.tool_dispatcher[tool_name]
-        return await invoker(**params)
+        return await self.tool_dispatcher[tool_name](**params)
 
     async def stream_user_turn(self, request: UserTurnRequest) -> AsyncIterator[StreamTurnEvent]:
         """Stream an interactive user turn progressively (K1)."""
