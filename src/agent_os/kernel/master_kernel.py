@@ -29,6 +29,7 @@ from agent_os.infrastructure.storage.telemetry_repo import TelemetryRepository
 from agent_os.infrastructure.wiki.store import WikiStore
 from agent_os.kernel.chat_loop import CompanionChatLoop
 from agent_os.kernel.credential_proxy import CredentialProxyGate
+from agent_os.kernel.default_recipes import ensure_default_recipes
 from agent_os.kernel.default_routines import ensure_default_routines
 from agent_os.kernel.dispatcher import ZeroCatalogDispatcher
 from agent_os.kernel.education_tools import EducationToolSuite
@@ -143,6 +144,7 @@ class AgentOSKernel:
             routine_repo=self.routine_repo,
         )
         ensure_default_routines(self.routine_repo)
+        ensure_default_recipes(self.recipe_repo)
 
         # Fact prefetcher
         self.fact_prefetcher = FactPrefetcher(facts_repo=facts_repo)
