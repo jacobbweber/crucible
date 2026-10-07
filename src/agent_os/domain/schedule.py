@@ -6,7 +6,9 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-CatchUpPolicy = Literal["run_once_immediately", "skip_to_next", "queue_all"]
+CatchUpPolicy = Literal[
+    "run_once_immediately", "skip_to_next", "queue_all", "respectful", "notify_and_skip"
+]
 
 
 class ScheduledRoutine(BaseModel):

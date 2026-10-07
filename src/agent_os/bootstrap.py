@@ -50,7 +50,8 @@ def build_runtime(
     )
     semaphore = InferenceSemaphore(max_concurrency=k_cfg.max_concurrency)
 
-    wiki_store = WikiStore(root / "wiki_vault")
+    vault_dir = root / "warehouse" if (root / "warehouse").exists() else root / "wiki_vault"
+    wiki_store = WikiStore(vault_dir)
     wiki_store.init_vault()
 
     base_adapter = adapter or VllmAdapter(cfg, semaphore=semaphore)

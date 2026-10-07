@@ -7,9 +7,10 @@ from pydantic import BaseModel, Field
 
 
 class ProtectedFolder(StrEnum):
-    """Protected root folder names in the wiki vault."""
+    """Protected root folder names in the warehouse vault."""
 
     INBOX = "00_Inbox"
+    KNOWLEDGE = "01_Knowledge"
     NOTES = "01_Notes"
     RESOURCES = "02_Resources"
     ARCHIVE = "03_Archive"

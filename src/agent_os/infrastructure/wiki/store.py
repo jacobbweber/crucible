@@ -40,9 +40,7 @@ class WikiStore:
             ) from exc
         return resolved
 
-    def _resolve_safe_path(self, relative_path: str | Path) -> Path:
-        """Backward-compatible alias for resolve_safe_path."""
-        return self.resolve_safe_path(relative_path)
+    _resolve_safe_path = resolve_safe_path
 
     def read_note_detailed(
         self, relative_path: str, max_lines: int = 200
@@ -105,7 +103,11 @@ class WikiStore:
 
     def list_category(self, category_folder: ProtectedFolder) -> list[str]:
         """Return relative file paths within the designated protected root."""
-        folder_path = self.root_dir / category_folder.value
+        target_val = category_folder.value
+        if target_val == ProtectedFolder.NOTES.value and not (self.root_dir / target_val).exists():
+            if (self.root_dir / ProtectedFolder.KNOWLEDGE.value).exists():
+                target_val = ProtectedFolder.KNOWLEDGE.value
+        folder_path = self.root_dir / target_val
         if not folder_path.exists():
             return []
 
@@ -126,7 +128,11 @@ class WikiStore:
         Returns:
             List of (relative_path, snippet) tuples.
         """
-        folder_path = self.root_dir / folder.value
+        target_val = folder.value
+        if target_val == ProtectedFolder.NOTES.value and not (self.root_dir / target_val).exists():
+            if (self.root_dir / ProtectedFolder.KNOWLEDGE.value).exists():
+                target_val = ProtectedFolder.KNOWLEDGE.value
+        folder_path = self.root_dir / target_val
         if not folder_path.exists():
             return []
 
@@ -230,16 +236,25 @@ class WikiStore:
             if not fm.tags:
                 reasons.append("Tags must not be empty")
 
-            clean_category = fm.category.strip()
-            if not clean_category:
+            clean_category = fm.category.strip().replace("\\", "/").strip("/")
+            cat_parts = [p for p in clean_category.split("/") if p]
+            if not cat_parts:
                 reasons.append("Category must not be empty")
-            elif clean_category.lower() in protected_names:
+            elif any(p.lower() in protected_names for p in cat_parts):
                 reasons.append(f"Category '{clean_category}' points to a protected folder")
-            elif any(c in clean_category for c in ("..", "/", "\\", ":", "\x00")):
+            elif ".." in cat_parts or any(c in clean_category for c in (":", "\x00")):
                 reasons.append(f"Category '{clean_category}' contains invalid path characters")
+            elif len(cat_parts) > 2:
+                reasons.append(f"Category '{clean_category}' exceeds maximum depth of 2 folders")
 
-            # Verify destination folder does not escape 01_Notes
-            notes_root = (self.root_dir / ProtectedFolder.NOTES.value).resolve()
+            # Verify destination folder does not escape 01_Knowledge or 01_Notes
+            target_folder = (
+                ProtectedFolder.KNOWLEDGE.value
+                if (self.root_dir / ProtectedFolder.KNOWLEDGE.value).exists()
+                and not (self.root_dir / ProtectedFolder.NOTES.value).exists()
+                else ProtectedFolder.NOTES.value
+            )
+            notes_root = (self.root_dir / target_folder).resolve()
             dest_dir = (notes_root / clean_category).resolve()
             try:
                 dest_dir.relative_to(notes_root)
@@ -278,3 +293,7 @@ class WikiStore:
             graduated_files=graduated_files,
             failures=failures,
         )
+
+
+WarehouseStore = WikiStore
+

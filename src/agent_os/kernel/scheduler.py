@@ -87,6 +87,7 @@ class EmbeddedSchedulerDaemon:
         self.semaphore = semaphore
         self.routine_repo = routine_repo
         self.routines: dict[str, ScheduledRoutine] = {}
+        self._missed_routines: list[ScheduledRoutine] = []
 
         if self.routine_repo is not None:
             for r in self.routine_repo.list_routines():
@@ -141,6 +142,14 @@ class EmbeddedSchedulerDaemon:
 
         return False
 
+    def get_missed_routines(self) -> list[ScheduledRoutine]:
+        """Return list of missed routines awaiting user on-demand review."""
+        return list(self._missed_routines)
+
+    def clear_missed_routines(self) -> None:
+        """Clear acknowledged missed routines."""
+        self._missed_routines.clear()
+
     def evaluate_catch_up(self, now: datetime) -> list[ScheduledRoutine]:
         """Identify overdue routines and apply configured catch-up policies."""
         catch_up_routines: list[ScheduledRoutine] = []
@@ -153,7 +162,10 @@ class EmbeddedSchedulerDaemon:
                 effective_next = compute_next_run(routine.cron_expression, routine.last_run_at)
 
             if effective_next is not None and effective_next < now:
-                if routine.catch_up_policy == "run_once_immediately":
+                if routine.catch_up_policy in ("respectful", "notify_and_skip"):
+                    routine.next_run_at = compute_next_run(routine.cron_expression, now)
+                    self._missed_routines.append(routine)
+                elif routine.catch_up_policy == "run_once_immediately":
                     routine.next_run_at = compute_next_run(routine.cron_expression, now)
                     catch_up_routines.append(routine)
                 elif routine.catch_up_policy == "skip_to_next":

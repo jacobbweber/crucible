@@ -90,6 +90,12 @@ class ZeroCatalogDispatcher:
         if "wiki_read" in selected_tools and "wiki_search" in allowed_tools:
             if "wiki_search" not in selected_tools:
                 selected_tools.append("wiki_search")
+        if "warehouse_search" in selected_tools and "warehouse_read" in allowed_tools:
+            if "warehouse_read" not in selected_tools:
+                selected_tools.append("warehouse_read")
+        if "warehouse_read" in selected_tools and "warehouse_search" in allowed_tools:
+            if "warehouse_search" not in selected_tools:
+                selected_tools.append("warehouse_search")
 
         return brief, selected_tools
 

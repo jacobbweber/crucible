@@ -1,7 +1,7 @@
 """Session and journey repository implementation using SQLite."""
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Literal, cast
 
@@ -13,9 +13,15 @@ from agent_os.infrastructure.storage.session_db import get_connection, init_db
 class SessionRepository:
     """Repository for managing session persistence, turns, and sub-journey scratchpads."""
 
-    def __init__(self, db_path: Path) -> None:
+    def __init__(self, db_path: Path, archive_db_path: Path | None = None) -> None:
         self.db_path = db_path.resolve()
+        self.archive_db_path = (
+            archive_db_path.resolve()
+            if archive_db_path is not None
+            else self.db_path.parent / f"{self.db_path.stem}_archive.db"
+        )
         init_db(self.db_path)
+        init_db(self.archive_db_path)
         self._journey_repo = JourneyRepository(self.db_path)
 
     def create_session(self, title: str = "New Session") -> SessionRecord:
@@ -193,11 +199,7 @@ class SessionRepository:
     ) -> None:
         """Append an isolated worker execution step to the journey scratchpad."""
         self._journey_repo.record_journey_step(
-            journey_id=journey_id,
-            node_name=node_name,
-            input_payload=input_payload,
-            output_payload=output_payload,
-            duration_ms=duration_ms,
+            journey_id, node_name, input_payload, output_payload, duration_ms
         )
 
     def complete_journey(
@@ -211,12 +213,7 @@ class SessionRepository:
     ) -> JourneyRecord:
         """Complete a journey with final status and return envelope."""
         return self._journey_repo.complete_journey(
-            journey_id=journey_id,
-            status=status,
-            summary=summary,
-            artifacts=artifacts,
-            state_mutations=state_mutations,
-            metrics=metrics,
+            journey_id, status, summary, artifacts, state_mutations, metrics
         )
 
     def get_journey(self, journey_id: str) -> JourneyRecord | None:
@@ -226,3 +223,76 @@ class SessionRepository:
     def get_journey_scratchpad(self, journey_id: str) -> list[dict[str, Any]]:
         """Retrieve raw step telemetry sequence for isolated audit."""
         return self._journey_repo.get_journey_scratchpad(journey_id)
+
+    def archive_old_sessions(self, retention_days: int = 90) -> int:
+        """Migrate sessions and associated records older than retention_days to cold archive."""
+        cutoff = (datetime.now(UTC) - timedelta(days=retention_days)).isoformat()
+        with get_connection(self.db_path) as src_conn:
+            cursor = src_conn.execute(
+                "SELECT session_id FROM sessions WHERE updated_at < ?;",
+                (cutoff,),
+            )
+            old_session_ids = [row["session_id"] for row in cursor.fetchall()]
+
+        if not old_session_ids:
+            return 0
+
+        with (
+            get_connection(self.db_path) as src_conn,
+            get_connection(self.archive_db_path) as dst_conn,
+        ):
+            for s_id in old_session_ids:
+                s_row = src_conn.execute(
+                    "SELECT * FROM sessions WHERE session_id = ?;", (s_id,)
+                ).fetchone()
+                if s_row:
+                    s_vals = (
+                        s_row["session_id"],
+                        s_row["title"],
+                        s_row["created_at"],
+                        s_row["updated_at"],
+                    )
+                    dst_conn.execute(
+                        "INSERT OR REPLACE INTO sessions VALUES (?, ?, ?, ?, 1);", s_vals
+                    )
+                turns = src_conn.execute(
+                    "SELECT * FROM turns WHERE session_id = ?;", (s_id,)
+                ).fetchall()
+                for t in turns:
+                    t_vals = (
+                        t["turn_id"],
+                        t["session_id"],
+                        t["turn_index"],
+                        t["role"],
+                        t["content"],
+                        t["token_count"],
+                        t["created_at"],
+                    )
+                    dst_conn.execute(
+                        "INSERT OR REPLACE INTO turns VALUES (?, ?, ?, ?, ?, ?, ?);", t_vals
+                    )
+                src_conn.execute("DELETE FROM sessions WHERE session_id = ?;", (s_id,))
+
+        return len(old_session_ids)
+
+    def get_archived_session(self, session_id: str) -> SessionRecord | None:
+        """Retrieve a session from the cold archive database."""
+        with get_connection(self.archive_db_path) as conn:
+            cursor = conn.execute(
+                """
+                SELECT session_id, title, created_at, updated_at, is_archived
+                FROM sessions WHERE session_id = ?;
+                """,
+                (session_id,),
+            )
+            row = cursor.fetchone()
+        if row is None:
+            return None
+        return SessionRecord(
+            session_id=row["session_id"],
+            title=row["title"],
+            created_at=datetime.fromisoformat(row["created_at"]),
+            updated_at=datetime.fromisoformat(row["updated_at"]),
+            is_archived=True,
+        )
+

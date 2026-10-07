@@ -19,7 +19,7 @@ class WikiToolSuite:
 
     def get_definitions(self) -> list[ToolDefinition]:
         """Return tool definitions and parameter schemas for all wiki capabilities."""
-        return [
+        base_defs = [
             ToolDefinition(
                 name="wiki_read",
                 description="Read and parse note frontmatter and body with line-bounded reading.",
@@ -127,6 +127,18 @@ class WikiToolSuite:
                 parameters=[],
             ),
         ]
+        warehouse_defs = [
+            ToolDefinition(
+                name=d.name.replace("wiki_", "warehouse_"),
+                description=(
+                    d.description.replace("wiki", "warehouse").replace("01_Notes", "01_Knowledge")
+                ),
+                action_tier=d.action_tier,
+                parameters=d.parameters,
+            )
+            for d in base_defs
+        ]
+        return base_defs + warehouse_defs
 
     def wiki_read(self, path: str, max_lines: int = 200) -> ToolExecutionResult:
         """Read note frontmatter and body content, enforcing max_lines ceiling."""
@@ -272,3 +284,13 @@ class WikiToolSuite:
             success=True,
             output=output_md,
         )
+
+    warehouse_read = wiki_read
+    warehouse_write = wiki_write
+    warehouse_list_category = wiki_list_category
+    warehouse_search = wiki_search
+    warehouse_graduate_inbox = wiki_graduate_inbox
+
+
+WarehouseToolSuite = WikiToolSuite
+
