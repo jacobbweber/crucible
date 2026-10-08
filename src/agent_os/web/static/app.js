@@ -135,6 +135,48 @@
     return formatted.join("\n");
   }
 
+  function extractBracketedDirective(text, tag) {
+    const marker = `[${tag.toUpperCase()}:`;
+    const results = [];
+    const parts = [];
+    let i = 0;
+    const n = text.length;
+    const upper = text.toUpperCase();
+
+    while (i < n) {
+      const start = upper.indexOf(marker, i);
+      if (start === -1) {
+        parts.push(text.substring(i));
+        break;
+      }
+      parts.push(text.substring(i, start));
+      let depth = 0;
+      let closeIdx = -1;
+      for (let j = start; j < n; j++) {
+        if (text[j] === "[") {
+          depth++;
+        } else if (text[j] === "]") {
+          depth--;
+          if (depth === 0) {
+            closeIdx = j;
+            break;
+          }
+        }
+      }
+      if (closeIdx !== -1) {
+        const inner = text.substring(start + marker.length, closeIdx).trim();
+        const idx = results.length;
+        results.push(inner);
+        parts.push(`\n\n%%${tag.toUpperCase()}_${idx}%%\n\n`);
+        i = closeIdx + 1;
+      } else {
+        parts.push(text.substring(start));
+        break;
+      }
+    }
+    return { text: parts.join(""), items: results };
+  }
+
   function renderMarkdown(rawText) {
     if (!rawText) return "";
     let text = rawText;
@@ -151,37 +193,35 @@
       return "";
     });
 
-    // 2. Extract [DISPATCH: task] directives with placeholders
-    const directives = [];
-    text = text.replace(/\[DISPATCH:\s*([^\]]+)\]/gi, (_m, task) => {
-      const idx = directives.length;
-      directives.push(`<div class="directive-card">
+    // 2. Extract [DISPATCH: task] directives with balanced brackets
+    const extractedDispatch = extractBracketedDirective(text, "DISPATCH");
+    text = extractedDispatch.text;
+    const directives = extractedDispatch.items.map((task) => `
+      <div class="directive-card">
         <div class="directive-header"><span class="directive-icon">⚡</span> <strong>Background Directive Dispatched</strong></div>
         <div class="directive-body">${formatMarkdown(task)}</div>
-      </div>`);
-      return `\n\n%%DIRECTIVE_${idx}%%\n\n`;
-    });
+      </div>
+    `);
 
-    // 3. Extract [COMPLETED: summary] directives with placeholders
-    const completions = [];
-    text = text.replace(/\[COMPLETED:\s*([\s\S]*?)\](?:\n|$)/gi, (_m, summary) => {
-      const idx = completions.length;
-      completions.push(`<div class="completion-card">
+    // 3. Extract [COMPLETED: summary] directives with balanced brackets
+    const extractedCompleted = extractBracketedDirective(text, "COMPLETED");
+    text = extractedCompleted.text;
+    const completions = extractedCompleted.items.map((summary) => `
+      <div class="completion-card">
         <div class="completion-header"><span>✅</span> <strong>Directive Completed</strong></div>
         <div class="completion-summary">${formatMarkdown(summary)}</div>
-      </div>`);
-      return `\n\n%%COMPLETION_${idx}%%\n\n`;
-    });
+      </div>
+    `);
 
     // 4. Format markdown on prose
     let rendered = formatMarkdown(text);
 
     // 5. Reinsert actual HTML cards
     directives.forEach((card, idx) => {
-      rendered = rendered.replace(new RegExp(`(<p>\\s*)?%%DIRECTIVE_${idx}%%(\\s*<\\/p>)?`, "g"), card);
+      rendered = rendered.replace(new RegExp(`(<p>\\s*)?%%DISPATCH_${idx}%%(\\s*<\\/p>)?`, "g"), card);
     });
     completions.forEach((card, idx) => {
-      rendered = rendered.replace(new RegExp(`(<p>\\s*)?%%COMPLETION_${idx}%%(\\s*<\\/p>)?`, "g"), card);
+      rendered = rendered.replace(new RegExp(`(<p>\\s*)?%%COMPLETED_${idx}%%(\\s*<\\/p>)?`, "g"), card);
     });
 
     return thinkingBlock + rendered;
@@ -337,6 +377,7 @@
     let reasoningBox = null;
     let reasoningBody = null;
 
+    let reader = null;
     try {
       const response = await fetch("/api/chat/stream", {
         method: "POST",
@@ -346,17 +387,16 @@
 
       if (!response.ok || !response.body) {
         bubble.innerHTML = "<em>Error initiating response stream.</em>";
-        bubble.classList.remove("stream-cursor");
-        isStreaming = false;
-        btnSend.disabled = false;
         return;
       }
 
-      const reader = response.body.getReader();
+      reader = response.body.getReader();
       const decoder = new TextDecoder("utf-8");
       let buffer = "";
+      let currentEvent = null;
+      let streamDone = false;
 
-      while (true) {
+      while (!streamDone) {
         const { value, done } = await reader.read();
         if (done) break;
 
@@ -364,14 +404,21 @@
         const lines = buffer.split("\n");
         buffer = lines.pop(); // keep last incomplete line
 
-        let currentEvent = null;
-
         for (const line of lines) {
           if (line.startsWith("event: ")) {
             currentEvent = line.substring(7).trim();
+            if (currentEvent === "done") {
+              streamDone = true;
+              break;
+            }
           } else if (line.startsWith("data: ")) {
             const dataStr = line.substring(6).trim();
             if (!dataStr) continue;
+
+            if (currentEvent === "done") {
+              streamDone = true;
+              break;
+            }
 
             try {
               const data = JSON.parse(dataStr);
@@ -427,11 +474,21 @@
             }
           }
         }
+
+        if (streamDone) {
+          try { await reader.cancel(); } catch (_) {}
+          break;
+        }
+      }
+
+      if (fullDelta) {
+        bubble.innerHTML = renderMarkdown(fullDelta);
       }
     } catch (streamErr) {
       console.error("Stream connection failed:", streamErr);
       bubble.innerHTML += "<p><em>Connection interrupted.</em></p>";
     } finally {
+      try { if (reader) await reader.cancel(); } catch (_) {}
       bubble.classList.remove("stream-cursor");
       isStreaming = false;
       btnSend.disabled = false;
