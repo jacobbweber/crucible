@@ -41,9 +41,36 @@ class RecipeChamber:
             task=request.task,
         )
 
-        # 2. Construct runner execution request
+        # 2. Context assembly and pre-flight verification
+        context_data = (request.context_payload or "").strip()
+        if not context_data and hasattr(self.repo, "get_recent_turns"):
+            recent_turns = self.repo.get_recent_turns(request.session_id, limit=3)
+            if recent_turns:
+                context_data = "\n\n".join(
+                    f"[{t.role.upper()}]:\n{t.content.strip()}"
+                    for t in recent_turns
+                    if t.content.strip()
+                )
+
+        effective_task = request.task
+        if context_data:
+            effective_task = (
+                f"{request.task}\n\n"
+                f"### Context Data & Reference Conversation Payload:\n"
+                f"{context_data}"
+            )
+
+        target_tools = list(request.packet.target_tools)
+        task_lower = request.task.lower()
+        if any(w in task_lower for w in ("save", "write", "capture", "store")) and "warehouse" in task_lower:
+            if "warehouse_write" not in target_tools and ("warehouse_write" in self.tool_definitions or "warehouse_write" in self.tool_tiers):
+                target_tools.append("warehouse_write")
+            if "warehouse_read" not in target_tools and ("warehouse_read" in self.tool_definitions or "warehouse_read" in self.tool_tiers):
+                target_tools.append("warehouse_read")
+
+        # 3. Construct runner execution request
         tools: list[ToolDefinition] = []
-        for t_name in request.packet.target_tools:
+        for t_name in target_tools:
             if t_name in self.tool_definitions:
                 tools.append(self.tool_definitions[t_name])
             elif t_name in self.tool_tiers:
@@ -64,12 +91,13 @@ class RecipeChamber:
                 )
         modality = request.packet.modality or ("react" if tools else "direct")
         runner_req = RunnerExecutionRequest(
-            task=request.task,
+            task=effective_task,
             modality=modality,
             system_prompt=request.packet.system_prompt,
             timeout_seconds=request.timeout_seconds,
             tools=tools,
         )
+
 
         # 3. Run execution with timing
         start_time = perf_counter()

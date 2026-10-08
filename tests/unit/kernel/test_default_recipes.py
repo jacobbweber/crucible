@@ -17,11 +17,12 @@ def test_ensure_default_recipes_seeds_catalog(tmp_path: Path) -> None:
     # Seed recipes
     ensure_default_recipes(repo)
     recipes = repo.list_recipes()
-    assert len(recipes) == 5
+    assert len(recipes) == 6
 
     # Check recipe IDs
     ids = {r.metadata.recipe_id for r in recipes}
     assert "self_health_audit" in ids
+    assert "warehouse_capture_note" in ids
     assert "weekly_warehouse_graduation" in ids
     assert "deep_topic_synthesis" in ids
     assert "docker_container_orchestration" in ids
@@ -31,6 +32,10 @@ def test_ensure_default_recipes_seeds_catalog(tmp_path: Path) -> None:
     health_matches = repo.match_intent("check system health errors and audit vitals")
     assert len(health_matches) >= 1
     assert health_matches[0].recipe.metadata.recipe_id == "self_health_audit"
+
+    capture_matches = repo.match_intent("save notes and capture overview to warehouse")
+    assert len(capture_matches) >= 1
+    assert capture_matches[0].recipe.metadata.recipe_id == "warehouse_capture_note"
 
     docker_matches = repo.match_intent("inspect docker containers and logs")
     assert len(docker_matches) >= 1
@@ -42,4 +47,5 @@ def test_ensure_default_recipes_seeds_catalog(tmp_path: Path) -> None:
 
     # Idempotent re-run
     ensure_default_recipes(repo)
-    assert len(repo.list_recipes()) == 5
+    assert len(repo.list_recipes()) == 6
+

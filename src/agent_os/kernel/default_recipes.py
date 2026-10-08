@@ -207,10 +207,50 @@ def _build_custom_mcp_authoring_recipe() -> RecipeRecord:
     )
 
 
+def _build_warehouse_capture_recipe() -> RecipeRecord:
+    metadata = RecipeMetadata(
+        recipe_id="warehouse_capture_note",
+        name="Warehouse Note Capture & Staging",
+        description=(
+            "Capture, format, and stage notes, summaries, or conversation excerpts into "
+            "00_Inbox with valid frontmatter metadata."
+        ),
+        execution_engine="react",
+        target_model_tier="reasoning",
+        tags=["warehouse", "save", "capture", "note", "write", "inbox", "store"],
+        required_tools=["warehouse_write", "warehouse_read", "session_search_history"],
+        timeout_seconds=300,
+    )
+    body = (
+        "# Warehouse Note Capture & Staging\n\n"
+        "## Goal\n"
+        "Capture reference material, synthesized summaries, or conversation knowledge, "
+        "format with valid YAML frontmatter, and stage directly into `00_Inbox/`.\n\n"
+        "## Procedural Steps\n"
+        "1. Identify the note content, title, category, and relevant tags from the task context.\n"
+        "2. If full content is not in task context, call `session_search_history` to retrieve recent turns.\n"
+        "3. Format the document with valid YAML frontmatter including `title`, `tags`, and `category`.\n"
+        "4. Call `warehouse_write` to stage note into `00_Inbox/<slug_title>.md`.\n"
+        "5. Verify writing succeeded and return a confirmation summary stating the saved file path.\n\n"
+        "## Verification Criteria\n"
+        "- Document is successfully written into `00_Inbox/` via `warehouse_write`.\n"
+        "- Markdown file contains valid YAML frontmatter.\n"
+    )
+    now = datetime.now(UTC)
+    return RecipeRecord(
+        metadata=metadata,
+        markdown_path="02_Resources/recipes/warehouse_capture_note.md",
+        body=body,
+        created_at=now,
+        updated_at=now,
+    )
+
+
 def ensure_default_recipes(recipe_repo: RecipeRepository) -> None:
     """Idempotently register core system execution recipes into recipes.db."""
     default_recipes = [
         _build_health_audit_recipe(),
+        _build_warehouse_capture_recipe(),
         _build_warehouse_graduation_recipe(),
         _build_topic_synthesis_recipe(),
         _build_docker_orchestration_recipe(),
@@ -219,3 +259,4 @@ def ensure_default_recipes(recipe_repo: RecipeRepository) -> None:
     for recipe in default_recipes:
         if recipe_repo.get_recipe(recipe.metadata.recipe_id) is None:
             recipe_repo.upsert_recipe(recipe)
+

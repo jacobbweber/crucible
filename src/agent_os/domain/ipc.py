@@ -28,3 +28,5 @@ class SubJobExecutionRequest(BaseModel):
     task: str
     packet: CompiledExecutionPacket
     timeout_seconds: int = Field(default=300, ge=10)
+    context_payload: str = ""
+

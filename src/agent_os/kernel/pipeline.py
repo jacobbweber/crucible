@@ -10,6 +10,7 @@ from agent_os.domain.pipeline import (
 from agent_os.domain.recipe import RecipeMetadata, RecipeRecord
 from agent_os.infrastructure.storage.recipe_repo import RecipeRepository
 from agent_os.kernel.dispatcher import ZeroCatalogDispatcher
+from agent_os.kernel.recipe_triage import select_best_recipe_match
 from agent_os.kernel.signaling import CompletionSignaler
 
 
@@ -32,21 +33,17 @@ class JobAssemblyPipeline:
 
     def triage_capability_gap(self, task: str, available_tools: list[str]) -> CapabilityGapReport:
         """Triage whether a task can be satisfied by catalog recipes or requires synthesis."""
-        matches = self.recipe_repo.match_intent(task, limit=1)
+        matches = self.recipe_repo.match_intent(task, limit=5)
         threshold = getattr(self.dispatcher, "threshold", 0.5)
-
-        is_match = False
-        top_recipe = None
-        if matches and matches[0].score >= threshold:
-            is_match = True
-            top_recipe = matches[0].recipe
+        best_match = select_best_recipe_match(task, matches, threshold)
 
         ack_message = (
             f"I don't have a saved recipe for '{task}' yet. "
             "I'm assembling an on-the-fly task brief and selecting the right tools now..."
         )
 
-        if is_match and top_recipe is not None:
+        if best_match is not None:
+            top_recipe = best_match.recipe
             available_set = set(available_tools)
             required = top_recipe.metadata.required_tools
             missing = [tool for tool in required if tool not in available_set]
@@ -64,6 +61,7 @@ class JobAssemblyPipeline:
                 resolution_strategy="ephemeral_synthesis",
                 acknowledgment=ack_message,
             )
+
 
         return CapabilityGapReport(
             task=task,
@@ -149,7 +147,9 @@ class JobAssemblyPipeline:
             request.task,
             available_tools=request.available_tools,
             timeout_seconds=request.timeout_seconds,
+            context_payload=request.context_payload,
         )
+
 
         # 3. Channel Signaling
         self.signaler.signal_completion(request.session_id, dispatch_res.envelope)

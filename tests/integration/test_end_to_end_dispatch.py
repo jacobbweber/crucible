@@ -144,3 +144,62 @@ async def test_end_to_end_conversational_job_dispatch(tmp_path: Path) -> None:
     assert "Found 1 note covering neural network fundamentals." in system_prompt
     assert "</background_completions>" in system_prompt
     assert "Found 1 note covering neural network fundamentals." in turn2_resp.response_text
+
+
+@pytest.mark.asyncio
+async def test_end_to_end_warehouse_capture_with_context_handoff(tmp_path: Path) -> None:
+    """Verify turn context is handed off to worker, warehouse_write is used, and file saved."""
+    responses = [
+        # Turn 1: Companion explains Docker containers
+        "Here is your fleet: 1 container running postgres:15 on port 5432.",
+        # Turn 2 Companion: Emits [DISPATCH]
+        "I will save that to our warehouse for you.\n[DISPATCH: Save running container overview note to warehouse]",
+        # Worker ReAct step 1: calls warehouse_write
+        (
+            "```json\n"
+            "{\n"
+            '  "thought": "Staging container overview note to 00_Inbox with YAML frontmatter.",\n'
+            '  "action": "warehouse_write",\n'
+            '  "parameters": {\n'
+            '    "path": "00_Inbox/docker_services.md",\n'
+            '    "title": "Docker Services Overview",\n'
+            '    "category": "infrastructure",\n'
+            '    "tags": ["docker", "containers"],\n'
+            '    "body": "Active container: postgres:15 on port 5432."\n'
+            "  }\n"
+            "}\n"
+            "```"
+        ),
+        # Worker ReAct step 2: Final confirmation
+        "Successfully staged note '00_Inbox/docker_services.md' into warehouse inbox.",
+    ]
+
+    adapter = MockMultiTurnModelAdapter(responses)
+    kernel = _build_kernel(tmp_path, adapter)
+    session = kernel.session_repo.create_session("Warehouse Capture Session")
+    session_id = session.session_id
+
+    # Turn 1: User asks about docker containers
+    req1 = UserTurnRequest(session_id=session_id, user_input="What containers are running?")
+    turn1_resp = await kernel.handle_user_turn(req1)
+    assert "postgres:15" in turn1_resp.response_text
+
+    # Turn 2: User says "Will you save that to our warehouse"
+    req2 = UserTurnRequest(session_id=session_id, user_input="Will you save that to our warehouse")
+    turn2_resp = await kernel.handle_user_turn(req2)
+
+    assert len(turn2_resp.dispatched_subjobs) == 1
+    job = turn2_resp.dispatched_subjobs[0]
+    assert job.dispatch_result.envelope.status == "completed"
+
+    # Verify that the recipe matched was warehouse_capture_note (NOT weekly_warehouse_graduation)
+    assert job.dispatch_result.decision.stage == "matched_recipe"
+    assert job.dispatch_result.decision.matched_recipe_id == "warehouse_capture_note"
+
+    # Verify that note was physically written to 00_Inbox/docker_services.md in the wiki store
+    fm, body = kernel.wiki_store.read_note("00_Inbox/docker_services.md")
+    assert fm is not None
+    assert fm.title == "Docker Services Overview"
+    assert "postgres:15 on port 5432" in body
+
+

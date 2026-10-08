@@ -26,55 +26,39 @@ def extract_tool_directives(text: str) -> list[tuple[str, dict[str, Any]]]:
     """Extract [TOOL: <name> <json_params>] directives, balancing JSON brackets/braces."""
     results: list[tuple[str, dict[str, Any]]] = []
     pattern = re.compile(r"\[TOOL:\s*([a-zA-Z0-9_\-]+)", re.IGNORECASE)
-    pos = 0
-    while True:
-        m = pattern.search(text, pos)
-        if not m:
-            break
-        tool_name = m.group(1).strip()
-        pos = m.end()
+    for m in pattern.finditer(text):
+        tool_name, pos = m.group(1).strip(), m.end()
         params: dict[str, Any] = {}
         while pos < len(text) and text[pos].isspace():
             pos += 1
         if pos < len(text) and text[pos] == "{":
-            depth = 0
-            start_brace = pos
-            in_quote = False
-            escape = False
-            end_brace = -1
-            for i in range(start_brace, len(text)):
-                ch = text[i]
-                if escape:
-                    escape = False
+            depth, in_q, esc, start = 0, False, False, pos
+            for i, ch in enumerate(text[start:], start=start):
+                if esc:
+                    esc = False
                     continue
                 if ch == "\\":
-                    escape = True
+                    esc = True
                     continue
                 if ch == '"':
-                    in_quote = not in_quote
+                    in_q = not in_q
                     continue
-                if not in_quote:
+                if not in_q:
                     if ch == "{":
                         depth += 1
                     elif ch == "}":
                         depth -= 1
                         if depth == 0:
-                            end_brace = i
+                            try:
+                                parsed = json.loads(text[start : i + 1])
+                                if isinstance(parsed, dict):
+                                    params = parsed
+                            except Exception:
+                                pass
                             break
-            if end_brace != -1:
-                json_str = text[start_brace : end_brace + 1]
-                try:
-                    parsed = json.loads(json_str)
-                    if isinstance(parsed, dict):
-                        params = parsed
-                except Exception:
-                    pass
-                pos = end_brace + 1
-        closing = text.find("]", pos)
-        if closing != -1:
-            pos = closing + 1
         results.append((tool_name, params))
     return results
+
 
 
 class CompanionChatLoop:
@@ -217,30 +201,45 @@ class CompanionChatLoop:
 
             if self.job_dispatcher:
                 tasks = extract_dispatch_directives(accumulated_text)
+                recent_turns = self.session_repo.get_recent_turns(self.session_id, limit=4)
+                turn_parts = [
+                    f"[{t.role.upper()}]:\n{t.content.strip()}"
+                    for t in recent_turns
+                    if t.turn_id != user_turn.turn_id and t.content.strip()
+                ]
+                turn_parts.append(f"[USER]:\n{user_input.strip()}")
+                ctx_payload = "\n\n".join(turn_parts)
+
                 for task in tasks:
                     try:
                         q: asyncio.Queue[str] = asyncio.Queue()
+                        seen_status: set[str] = set()
                         sig = inspect.signature(self.job_dispatcher)
-                        coro = (
-                            self.job_dispatcher(self.session_id, task, on_status=q.put_nowait)
-                            if "on_status" in sig.parameters
-                            else self.job_dispatcher(self.session_id, task)
-                        )
-                        fut = asyncio.create_task(coro)
+                        var_kw = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values())
+                        kwargs: dict[str, Any] = {}
+                        if var_kw or "on_status" in sig.parameters:
+                            kwargs["on_status"] = q.put_nowait
+                        if var_kw or "context_payload" in sig.parameters:
+                            kwargs["context_payload"] = ctx_payload
+                        fut = asyncio.create_task(self.job_dispatcher(self.session_id, task, **kwargs))
+
                         while not fut.done():
                             try:
                                 msg = await asyncio.wait_for(q.get(), timeout=1.0)
+                                seen_status.add(msg)
                                 yield StreamTurnEvent(event_type="status", delta=msg)
                             except TimeoutError:
                                 pass
                         job_res = await fut
                         while not q.empty():
-                            yield StreamTurnEvent(event_type="status", delta=q.get_nowait())
+                            msg = q.get_nowait()
+                            seen_status.add(msg)
+                            yield StreamTurnEvent(event_type="status", delta=msg)
 
                         gap_rep = getattr(job_res, "gap_report", None)
                         if gap_rep is not None and getattr(gap_rep, "has_gap", False):
                             ack = getattr(gap_rep, "acknowledgment", None)
-                            if ack and ack not in status_msgs:
+                            if ack and ack not in seen_status:
                                 yield StreamTurnEvent(event_type="status", delta=ack)
 
                         disp_res = getattr(job_res, "dispatch_result", None)
@@ -250,15 +249,10 @@ class CompanionChatLoop:
                             completion_summaries.append(comp_text)
                             yield StreamTurnEvent(event_type="delta", delta=f"\n\n{comp_text}")
 
-                        yield StreamTurnEvent(
-                            event_type="job_dispatched",
-                            dispatched_job=job_res,
-                        )
+                        yield StreamTurnEvent(event_type="job_dispatched", dispatched_job=job_res)
                     except Exception as exc:
-                        yield StreamTurnEvent(
-                            event_type="error",
-                            error_message=f"Job dispatch error: {exc}",
-                        )
+                        yield StreamTurnEvent(event_type="error", error_message=f"Job dispatch error: {exc}")
+
 
             if self.tool_dispatcher:
                 tools = extract_tool_directives(accumulated_text)

@@ -331,3 +331,59 @@ async def test_recipe_chamber_routes_packet_modality(tmp_path: Path) -> None:
     steps = repo.get_journey_scratchpad(envelope.journey_id)
     assert len(steps) == 3
     assert [s["node_name"] for s in steps] == ["plan", "thought", "verify"]
+
+
+@pytest.mark.asyncio
+async def test_recipe_chamber_assembles_context_and_validates_tools(tmp_path: Path) -> None:
+    """Verify RecipeChamber injects context payload and mounts warehouse_write when required."""
+    db_file = tmp_path / "session_store.db"
+    repo = SessionRepository(db_file)
+    session = repo.create_session("Context & Tools Chamber Session")
+
+    captured_requests = []
+
+    class CapturingRunner(NativeRunner):
+        async def execute(self, req):
+            captured_requests.append(req)
+            return await super().execute(req)
+
+    adapter = MockModelAdapter(responses=["Successfully saved note to warehouse."])
+    runner = CapturingRunner(
+        model_adapter=adapter,
+        policy_gate=ToolPolicyGate(ApprovalMode.BALANCED),
+        tool_dispatcher={},
+    )
+    chamber = RecipeChamber(
+        runner=runner,
+        session_repo=repo,
+        tool_tiers={"warehouse_write": ActionTier.STATE_CHANGE, "warehouse_read": ActionTier.READ},
+    )
+
+    packet = CompiledExecutionPacket(
+        system_prompt="Stage note to warehouse",
+        target_tools=[],  # intentionally empty target tools
+        token_estimate=10,
+        modality="direct",
+    )
+    request = SubJobExecutionRequest(
+        session_id=session.session_id,
+        task="Save the Okta architecture overview to the warehouse",
+        packet=packet,
+        context_payload="Okta uses OIDC/SAML with PKCE for single sign-on.",
+    )
+
+    envelope = await chamber.execute_sub_job(request)
+    assert envelope.status == "completed"
+
+    assert len(captured_requests) == 1
+    req = captured_requests[0]
+    # Verify context payload is in the effective task
+    assert "Save the Okta architecture overview to the warehouse" in req.task
+    assert "Context Data & Reference Conversation Payload" in req.task
+    assert "Okta uses OIDC/SAML with PKCE" in req.task
+
+    # Verify warehouse_write and warehouse_read were automatically mounted
+    tool_names = [t.name for t in req.tools]
+    assert "warehouse_write" in tool_names
+    assert "warehouse_read" in tool_names
+

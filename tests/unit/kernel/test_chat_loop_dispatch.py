@@ -169,3 +169,54 @@ async def test_chat_loop_dispatch_error_resilience(tmp_path: Path) -> None:
     assert len(error_events) == 1
     assert "Worker queue capacity exceeded" in (error_events[0].error_message or "")
     assert events[-1].event_type == "completed"
+
+
+@pytest.mark.asyncio
+async def test_chat_loop_dispatches_with_context_payload(tmp_path: Path) -> None:
+    """Verify conversational context payload is properly passed to job_dispatcher."""
+    repo = SessionRepository(tmp_path / "sessions.db")
+    session = repo.create_session("Context Payload Test")
+
+    # Seed previous turns
+    repo.append_turn(session.session_id, "user", "What are the running services?", 10)
+    repo.append_turn(
+        session.session_id,
+        "assistant",
+        "Here are the active services: Redis on 6379, Postgres on 5432.",
+        25,
+    )
+
+    chunks = [
+        StreamChunk(
+            delta="Saving those notes for you. [DISPATCH: Save service overview to warehouse]",
+            finish_reason="stop",
+        )
+    ]
+    adapter = MockModelAdapter(chunks)
+    config = CompanionConfig(name="Astra")
+
+    captured_kwargs: dict[str, Any] = {}
+
+    async def mock_dispatcher(session_id: str, task: str, **kwargs: Any) -> dict[str, str]:
+        captured_kwargs.update(kwargs)
+        captured_kwargs["task"] = task
+        return {"status": "completed"}
+
+    loop = CompanionChatLoop(
+        session_id=session.session_id,
+        session_repo=repo,
+        model_adapter=adapter,
+        config=config,
+        job_dispatcher=mock_dispatcher,  # type: ignore[arg-type]
+    )
+
+    events: list[StreamTurnEvent] = []
+    async for event in loop.execute_turn("Will you save that to our warehouse"):
+        events.append(event)
+
+    assert captured_kwargs["task"] == "Save service overview to warehouse"
+    assert "context_payload" in captured_kwargs
+    ctx = captured_kwargs["context_payload"]
+    assert "Redis on 6379, Postgres on 5432" in ctx
+    assert "Will you save that to our warehouse" in ctx
+

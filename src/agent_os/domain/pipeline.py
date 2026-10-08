@@ -25,6 +25,8 @@ class JobAssemblyRequest(BaseModel):
     task: str
     available_tools: list[str] = Field(default_factory=list)
     timeout_seconds: int = Field(default=300, ge=10)
+    context_payload: str = ""
+
 
 
 class PipelineExecutionResult(BaseModel):

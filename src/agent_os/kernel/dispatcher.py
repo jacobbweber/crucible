@@ -12,6 +12,8 @@ from agent_os.infrastructure.gateway.base import BaseModelAdapter
 from agent_os.infrastructure.storage.recipe_repo import RecipeRepository
 from agent_os.kernel.brief_assembler import TaskBriefAssembler
 from agent_os.kernel.recipe_chamber import RecipeChamber
+from agent_os.kernel.recipe_triage import select_best_recipe_match
+
 
 
 class ZeroCatalogDispatcher:
@@ -105,6 +107,7 @@ class ZeroCatalogDispatcher:
         task: str,
         available_tools: list[str] | None,
         timeout_seconds: int = 300,
+        context_payload: str = "",
     ) -> DispatchResult:
         """Stage 2: Assemble ephemeral task brief using model adapter and execute sub-job."""
         tools_list = available_tools or []
@@ -155,6 +158,7 @@ class ZeroCatalogDispatcher:
                 task=task,
                 packet=packet,
                 timeout_seconds=timeout_seconds,
+                context_payload=context_payload,
             )
         )
 
@@ -173,14 +177,15 @@ class ZeroCatalogDispatcher:
         task: str,
         available_tools: list[str] | None = None,
         timeout_seconds: int = 300,
+        context_payload: str = "",
     ) -> DispatchResult:
         """Dispatch task via Stage 1 (catalog recipe) or Stage 2 (ephemeral assembly)."""
-        matches = self.recipe_repo.match_intent(task, limit=1)
+        matches = self.recipe_repo.match_intent(task, limit=5)
+        best_match = select_best_recipe_match(task, matches, self.threshold)
 
         # Stage 1: Match Intent via SQLite FTS5 Index if tools are available
-        if matches and matches[0].score >= self.threshold:
-            top_match = matches[0]
-            recipe = top_match.recipe
+        if best_match is not None:
+            recipe = best_match.recipe
 
             # Verify that required tools for the matched recipe are actually present
             allowed_tools = set(available_tools) if available_tools is not None else None
@@ -203,6 +208,7 @@ class ZeroCatalogDispatcher:
                         task=task,
                         packet=packet,
                         timeout_seconds=recipe.metadata.timeout_seconds,
+                        context_payload=context_payload,
                     )
                 )
                 return DispatchResult(
@@ -210,7 +216,7 @@ class ZeroCatalogDispatcher:
                         task=task,
                         stage="matched_recipe",
                         matched_recipe_id=recipe.metadata.recipe_id,
-                        confidence_score=top_match.score,
+                        confidence_score=best_match.score,
                     ),
                     envelope=envelope,
                 )
@@ -221,4 +227,6 @@ class ZeroCatalogDispatcher:
             task=task,
             available_tools=available_tools,
             timeout_seconds=timeout_seconds,
+            context_payload=context_payload,
         )
+
