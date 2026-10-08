@@ -47,6 +47,10 @@ from agent_os.kernel.signaling import CompletionSignaler
 from agent_os.kernel.srs_engine import SRSEngine
 from agent_os.kernel.telemetry_collector import TelemetryCollector
 from agent_os.kernel.telemetry_tools import TelemetryToolSuite
+from agent_os.domain.workspace import WorkspaceConfig
+from agent_os.infrastructure.workspace.command_runner import SandboxedCommandRunner
+from agent_os.infrastructure.workspace.manager import WorkspaceManager
+from agent_os.kernel.workspace_tools import WorkspaceToolSuite
 from agent_os.kernel.wiki_tools import WikiToolSuite
 
 
@@ -96,6 +100,11 @@ class AgentOSKernel:
         self.telemetry_tools = TelemetryToolSuite(
             self.telemetry_repo, self.rca_stager, collector=self.collector, signaler=self.signaler
         )
+        ws_root = session_repo.db_path.parent / "workspace"
+        ws_cfg = WorkspaceConfig(root_dir=ws_root)
+        self.workspace_manager = WorkspaceManager(ws_cfg)
+        self.workspace_runner = SandboxedCommandRunner(ws_cfg)
+        self.workspace_tools = WorkspaceToolSuite(self.workspace_manager, self.workspace_runner)
 
         # Tools registration
         self.tools: dict[str, Callable[..., Any]] = {}
@@ -153,18 +162,20 @@ class AgentOSKernel:
         self.fact_prefetcher = FactPrefetcher(facts_repo=facts_repo)
 
     def _register_default_tools(self) -> None:
-        """Register built-in wiki, education, telemetry, and session tools."""
+        """Register built-in wiki, education, telemetry, session, and workspace tools."""
         suites = (
             self.wiki_tools,
             self.education_tools,
             self.telemetry_tools,
             self.session_tools,
+            self.workspace_tools,
         )
         for suite in suites:
             for defn in suite.get_definitions():
                 fn = getattr(suite, defn.name, None)
                 if fn:
                     self.register_tool(defn.name, fn, defn.action_tier, definition=defn)
+
 
     def register_tool(
         self,
@@ -237,14 +248,10 @@ class AgentOSKernel:
         facts_payload = self.fact_prefetcher.prefetch_for_turn(request.user_input)
         deferred_block = self.signaler.format_deferred_prompt_block(request.session_id)
         chat_loop = CompanionChatLoop(
-            session_id=request.session_id,
-            session_repo=self.session_repo,
-            model_adapter=self.model_adapter,
-            config=CompanionConfig(name=self.config.companion_name),
-            context_window=self.config.context_window,
-            reserve_output_tokens=self.config.reserve_output_tokens,
-            job_dispatcher=self.execute_job,
-            tool_dispatcher=self.execute_tool,
+            session_id=request.session_id, session_repo=self.session_repo,
+            model_adapter=self.model_adapter, config=CompanionConfig(name=self.config.companion_name),
+            context_window=self.config.context_window, reserve_output_tokens=self.config.reserve_output_tokens,
+            job_dispatcher=self.execute_job, tool_dispatcher=self.execute_tool,
         )
         async for event in chat_loop.execute_turn(
             user_input=request.user_input,
@@ -257,33 +264,25 @@ class AgentOSKernel:
         """Handle an interactive user turn with prefetching, background drain, and streaming."""
         facts_payload = self.fact_prefetcher.prefetch_for_turn(request.user_input)
         events: list[StreamTurnEvent] = []
-        response_parts: list[str] = []
-        dispatched_subjobs: list[PipelineExecutionResult] = []
-        final_turn_content = ""
-        last_error = ""
+        parts: list[str] = []
+        subjobs: list[PipelineExecutionResult] = []
+        final_turn, last_error = "", ""
 
         async for event in self.stream_user_turn(request):
             events.append(event)
             if event.event_type == "delta":
-                response_parts.append(event.delta)
-            elif event.event_type == "job_dispatched":
-                if isinstance(event.dispatched_job, PipelineExecutionResult):
-                    dispatched_subjobs.append(event.dispatched_job)
+                parts.append(event.delta)
+            elif event.event_type == "job_dispatched" and isinstance(event.dispatched_job, PipelineExecutionResult):
+                subjobs.append(event.dispatched_job)
             elif event.event_type == "completed" and event.turn:
-                final_turn_content = event.turn.content
+                final_turn = event.turn.content
             elif event.event_type == "error":
                 last_error = event.error_message or "Unknown error"
 
-        response_text = "".join(response_parts) or final_turn_content
-        if not response_text and last_error:
-            response_text = f"Error during turn: {last_error}"
-
+        resp = "".join(parts) or final_turn or (f"Error during turn: {last_error}" if last_error else "")
         return TurnResponse(
-            session_id=request.session_id,
-            response_text=response_text,
-            stream_events=events,
-            recalled_facts_count=facts_payload.recalled_count,
-            dispatched_subjobs=dispatched_subjobs,
+            session_id=request.session_id, response_text=resp, stream_events=events,
+            recalled_facts_count=facts_payload.recalled_count, dispatched_subjobs=subjobs,
             ambient_nudges=self.signaler.poll_ambient_nudges(session_id=request.session_id),
         )
 
@@ -291,11 +290,10 @@ class AgentOSKernel:
         self, session_id: str, task: str, on_status: Callable[[str], Any] | None = None
     ) -> PipelineExecutionResult:
         """Dispatch background task execution through dynamic job assembly line."""
-        req = JobAssemblyRequest(
-            session_id=session_id, task=task, available_tools=list(self.tools.keys())
-        )
+        req = JobAssemblyRequest(session_id=session_id, task=task, available_tools=list(self.tools.keys()))
         return await self.assembly_pipeline.run_pipeline(req, on_status=on_status)
 
     async def trigger_scheduler_tick(self, now: datetime) -> list[RoutineExecutionLog]:
         """Trigger background scheduler tick and return execution audit logs."""
         return await self.scheduler.tick(now)
+
