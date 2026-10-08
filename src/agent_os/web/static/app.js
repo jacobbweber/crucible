@@ -70,11 +70,11 @@
     s = escapeHtml(s);
 
     // 4. Tables: parse markdown tables (| col | col |)
-    s = s.replace(/((?:^|\n)\s*\|[^\n]+\|\s*(?:\n\s*\|[^\n]+\|\s*)+)/g, (match) => {
-      const lines = match.trim().split("\n").map(l => l.trim()).filter(Boolean);
+    s = s.replace(/((?:^|\n)[ \t]*\|[^\r\n]+\|[ \t]*(?:\r?\n[ \t]*\|[^\r\n]+\|[ \t]*)+)/g, (match) => {
+      const lines = match.trim().split(/\r?\n/).map(l => l.trim()).filter(Boolean);
       if (lines.length < 2) return match;
 
-      const sep = lines[1].replace(/\|/g, "").replace(/\s/g, "");
+      const sep = lines[1].replace(/\|/g, "").replace(/[ \t]/g, "");
       if (!/^[-:]+$/.test(sep)) return match;
 
       const parseRow = (line) => {
@@ -104,7 +104,7 @@
     s = s.replace(/(^|[^*])\*([^*]+)\*/g, "$1<em>$2</em>");
 
     // 7. Bullet lists
-    s = s.replace(/(?:^|\n)\s*[-*]\s+(.*)/g, "\n<li>$1</li>");
+    s = s.replace(/(?:^|\n)[ \t]*[-*][ \t]+(.*)/g, "\n<li>$1</li>");
     s = s.replace(/((?:<li>.*<\/li>\s*)+)/g, "<ul>$1</ul>");
 
     // 8. Restore inline code and code blocks
@@ -139,7 +139,7 @@
     if (!rawText) return "";
     let text = rawText;
 
-    // Extract <think> reasoning block
+    // 1. Extract <think> reasoning block
     let thinkingBlock = "";
     text = text.replace(/<think>([\s\S]*?)<\/think>/gi, (_m, reasoning) => {
       thinkingBlock = `<div class="reasoning-box">
@@ -151,23 +151,40 @@
       return "";
     });
 
-    // Extract [DISPATCH: task] directives
+    // 2. Extract [DISPATCH: task] directives with placeholders
+    const directives = [];
     text = text.replace(/\[DISPATCH:\s*([^\]]+)\]/gi, (_m, task) => {
-      return `\n\n<div class="directive-card">
+      const idx = directives.length;
+      directives.push(`<div class="directive-card">
         <div class="directive-header"><span class="directive-icon">⚡</span> <strong>Background Directive Dispatched</strong></div>
         <div class="directive-body">${formatMarkdown(task)}</div>
-      </div>\n\n`;
+      </div>`);
+      return `\n\n%%DIRECTIVE_${idx}%%\n\n`;
     });
 
-    // Extract [COMPLETED: summary] directives
+    // 3. Extract [COMPLETED: summary] directives with placeholders
+    const completions = [];
     text = text.replace(/\[COMPLETED:\s*([\s\S]*?)\](?:\n|$)/gi, (_m, summary) => {
-      return `\n\n<div class="completion-card">
+      const idx = completions.length;
+      completions.push(`<div class="completion-card">
         <div class="completion-header"><span>✅</span> <strong>Directive Completed</strong></div>
         <div class="completion-summary">${formatMarkdown(summary)}</div>
-      </div>\n\n`;
+      </div>`);
+      return `\n\n%%COMPLETION_${idx}%%\n\n`;
     });
 
-    return thinkingBlock + formatMarkdown(text);
+    // 4. Format markdown on prose
+    let rendered = formatMarkdown(text);
+
+    // 5. Reinsert actual HTML cards
+    directives.forEach((card, idx) => {
+      rendered = rendered.replace(new RegExp(`(<p>\\s*)?%%DIRECTIVE_${idx}%%(\\s*<\\/p>)?`, "g"), card);
+    });
+    completions.forEach((card, idx) => {
+      rendered = rendered.replace(new RegExp(`(<p>\\s*)?%%COMPLETION_${idx}%%(\\s*<\\/p>)?`, "g"), card);
+    });
+
+    return thinkingBlock + rendered;
   }
 
   // ---------------------------------------------------------------------------
