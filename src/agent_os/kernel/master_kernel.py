@@ -51,7 +51,10 @@ from agent_os.domain.workspace import WorkspaceConfig
 from agent_os.infrastructure.workspace.command_runner import SandboxedCommandRunner
 from agent_os.infrastructure.workspace.manager import WorkspaceManager
 from agent_os.kernel.workspace_tools import WorkspaceToolSuite
+from agent_os.kernel.tool_invoker import make_tool_invoker
 from agent_os.kernel.wiki_tools import WikiToolSuite
+from agent_os.mcp.client import McpClientSupervisor, McpServerConfig
+from agent_os.mcp.hub import McpHubManager
 
 
 class AgentOSKernel:
@@ -105,6 +108,8 @@ class AgentOSKernel:
         self.workspace_manager = WorkspaceManager(ws_cfg)
         self.workspace_runner = SandboxedCommandRunner(ws_cfg)
         self.workspace_tools = WorkspaceToolSuite(self.workspace_manager, self.workspace_runner)
+        self.mcp_supervisor = McpClientSupervisor()
+        self.mcp_hub = McpHubManager(ws_root)
 
         # Tools registration
         self.tools: dict[str, Callable[..., Any]] = {}
@@ -176,7 +181,6 @@ class AgentOSKernel:
                 if fn:
                     self.register_tool(defn.name, fn, defn.action_tier, definition=defn)
 
-
     def register_tool(
         self,
         name: str,
@@ -190,40 +194,20 @@ class AgentOSKernel:
         self._tool_definitions[name] = definition or ToolDefinition(
             name=name, description=f"Tool: {name}", action_tier=action_tier
         )
-        self.tool_dispatcher[name] = self._make_tool_invoker(name, fn)
+        self.tool_dispatcher[name] = make_tool_invoker(name, fn, self.credential_proxy)
 
-    def _make_tool_invoker(
-        self, tool_name: str, fn: Callable[..., Any]
-    ) -> Callable[..., Coroutine[Any, Any, ToolExecutionResult]]:
-        """Create an async invoker wrapping parameter unmasking and output scrubbing."""
+    async def mount_mcp_server(self, config: McpServerConfig) -> list[ToolDefinition]:
+        """Mount an external or local MCP server and register its tools into the active kernel."""
+        tools = await self.mcp_supervisor.connect(config)
+        for t_def in tools:
+            def _bind(tool_name: str) -> Callable[..., Coroutine[Any, Any, ToolExecutionResult]]:
+                async def _call(**kwargs: Any) -> ToolExecutionResult:
+                    return await self.mcp_supervisor.call_tool(tool_name, kwargs)
+                return _call
 
-        async def _invoker(**kwargs: Any) -> ToolExecutionResult:
-            resolved = self.credential_proxy.resolve_parameters(kwargs)
-            try:
-                res = fn(**resolved.resolved_params)
-                tool_res = await res if inspect.iscoroutine(res) else res
-                if not isinstance(tool_res, ToolExecutionResult):
-                    tool_res = ToolExecutionResult(
-                        tool_name=tool_name, success=True, output=str(res)
-                    )
-            except Exception as e:
-                tool_res = ToolExecutionResult(
-                    tool_name=tool_name, success=False, output="", error=str(e)
-                )
+            self.register_tool(t_def.name, _bind(t_def.name), t_def.action_tier, definition=t_def)
+        return tools
 
-            output, error = tool_res.output, tool_res.error
-            if resolved.secrets_to_scrub:
-                s = resolved.secrets_to_scrub
-                if output:
-                    output = self.credential_proxy.scrub_text(output, s).sanitized_text
-                if error:
-                    error = self.credential_proxy.scrub_text(error, s).sanitized_text
-
-            return ToolExecutionResult(
-                tool_name=tool_name, success=tool_res.success, output=output, error=error
-            )
-
-        return _invoker
 
     async def execute_tool(
         self, tool_name: str, parameters: dict[str, Any] | None = None

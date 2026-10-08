@@ -1,15 +1,16 @@
-"""Model Context Protocol (MCP) server gateway for Agent OS edge nodes."""
-
 import json
+from typing import TYPE_CHECKING, Any
 
 from mcp.server.mcpserver import MCPServer
 
 from agent_os.domain.kernel import UserTurnRequest
 from agent_os.domain.wiki import ProtectedFolder
-from agent_os.kernel.master_kernel import AgentOSKernel
+
+if TYPE_CHECKING:
+    from agent_os.kernel.master_kernel import AgentOSKernel
 
 
-def create_mcp_server(kernel: AgentOSKernel, name: str = "agent-os-node") -> MCPServer:
+def create_mcp_server(kernel: Any, name: str = "agent-os-node") -> MCPServer:
     """Build and configure a Model Context Protocol (MCP) server exposing kernel capabilities.
 
     Args:

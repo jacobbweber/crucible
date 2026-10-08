@@ -1,15 +1,16 @@
-"""Transport runners for Agent OS MCP server gateway."""
-
 import logging
+from typing import TYPE_CHECKING, Any
 
-from agent_os.kernel.master_kernel import AgentOSKernel
+if TYPE_CHECKING:
+    from agent_os.kernel.master_kernel import AgentOSKernel
+
 from agent_os.mcp.server import create_mcp_server
 
 logger = logging.getLogger(__name__)
 
 
 async def run_mcp_server(
-    kernel: AgentOSKernel,
+    kernel: Any,
     transport: str = "stdio",
     host: str = "127.0.0.1",
     port: int = 8000,
