@@ -128,12 +128,93 @@ def _build_topic_synthesis_recipe() -> RecipeRecord:
     )
 
 
+def _build_docker_orchestration_recipe() -> RecipeRecord:
+    metadata = RecipeMetadata(
+        recipe_id="docker_container_orchestration",
+        name="Docker Container Inspection & Homelab Orchestration",
+        description=(
+            "Inspect container states, retrieve logs, and orchestrate homelab services "
+            "using standard Docker MCP or workspace shell primitives."
+        ),
+        execution_engine="react",
+        target_model_tier="reasoning",
+        tags=["docker", "containers", "homelab", "mcp", "orchestration", "infrastructure"],
+        required_tools=["workspace_command", "workspace_read"],
+        timeout_seconds=300,
+    )
+    body = (
+        "# Docker Container Inspection & Homelab Orchestration\n\n"
+        "## Goal\n"
+        "Safely inspect container workloads, health states, and service logs in homelab "
+        "or local development environments.\n\n"
+        "## Procedural Steps\n"
+        "1. Check if Docker MCP tools are mounted in the active kernel.\n"
+        "2. If Docker MCP is available, query container status using `docker_list_containers`.\n"
+        "3. If Docker MCP is not mounted, execute `workspace_command` with `docker ps --format json`.\n"
+        "4. Inspect container health, port mappings, and recent log outputs.\n"
+        "5. Summarize running container fleet status and flag any crash loops or anomalies.\n\n"
+        "## Verification Criteria\n"
+        "- All inspected container IDs and health statuses match live state.\n"
+        "- Commands operate with read-only inspection boundaries unless explicit override given.\n"
+    )
+    now = datetime.now(UTC)
+    return RecipeRecord(
+        metadata=metadata,
+        markdown_path="02_Resources/recipes/docker_container_orchestration.md",
+        body=body,
+        created_at=now,
+        updated_at=now,
+    )
+
+
+def _build_custom_mcp_authoring_recipe() -> RecipeRecord:
+    metadata = RecipeMetadata(
+        recipe_id="custom_tool_authoring",
+        name="Custom Tool & FastMCP Synthesis",
+        description=(
+            "Draft, test, and dry-run new agentic tools or FastMCP integrations "
+            "within the isolated workspace, staging verified proposals in 00_Inbox."
+        ),
+        execution_engine="react",
+        target_model_tier="reasoning",
+        tags=["toolsmith", "mcp", "fastmcp", "code", "authoring", "automation"],
+        required_tools=["workspace_write", "workspace_command", "workspace_read"],
+        timeout_seconds=300,
+    )
+    body = (
+        "# Custom Tool & FastMCP Synthesis\n\n"
+        "## Goal\n"
+        "Develop and verify new typed FastMCP tools or custom automation scripts without "
+        "direct core code modification.\n\n"
+        "## Procedural Steps\n"
+        "1. Analyze the requested domain and operational requirements.\n"
+        "2. Write clean Python implementation decorated with `@hub.tool()` into workspace.\n"
+        "3. Generate a pre-flight test harness script in the workspace.\n"
+        "4. Execute the test harness via `workspace_command` in an isolated dry run.\n"
+        "5. If tests pass, stage the verified proposal into `00_Inbox/proposal_tool_<name>.md`.\n"
+        "6. Await user confirmation or `/approve <name>` before mounting into live FastMCP Hub.\n\n"
+        "## Verification Criteria\n"
+        "- Code passes dry-run execution with zero exit code before staging.\n"
+        "- Staged proposal contains full code, sample inputs, and verified outputs.\n"
+    )
+    now = datetime.now(UTC)
+    return RecipeRecord(
+        metadata=metadata,
+        markdown_path="02_Resources/recipes/custom_tool_authoring.md",
+        body=body,
+        created_at=now,
+        updated_at=now,
+    )
+
+
 def ensure_default_recipes(recipe_repo: RecipeRepository) -> None:
     """Idempotently register core system execution recipes into recipes.db."""
     default_recipes = [
         _build_health_audit_recipe(),
         _build_warehouse_graduation_recipe(),
         _build_topic_synthesis_recipe(),
+        _build_docker_orchestration_recipe(),
+        _build_custom_mcp_authoring_recipe(),
     ]
     for recipe in default_recipes:
         if recipe_repo.get_recipe(recipe.metadata.recipe_id) is None:

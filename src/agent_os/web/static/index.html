@@ -51,6 +51,9 @@
           <button class="ambient-bell-btn" id="btn-ambient" title="Ambient Notifications">
             🔔 <span class="badge-count hidden" id="ambient-badge">0</span>
           </button>
+          <button class="mcp-btn" id="btn-mcp" title="Tools & MCP Management">
+            🔌 <span class="mcp-label">Tools & MCP</span>
+          </button>
         </div>
       </header>
 
@@ -62,6 +65,59 @@
         </div>
         <div class="ambient-list" id="ambient-list">
           <div class="ambient-empty">No unread background notifications.</div>
+        </div>
+      </div>
+
+      <!-- Tools & MCP Drawer -->
+      <div class="mcp-drawer hidden" id="mcp-drawer">
+        <div class="drawer-header">
+          <h3>Tools & Model Context Protocol (MCP)</h3>
+          <button class="btn-close" id="btn-close-mcp">&times;</button>
+        </div>
+        <div class="mcp-content">
+          <!-- Pending Tool Proposals -->
+          <div class="mcp-section">
+            <h4>Pending Tool Proposals (Toolsmith Staging)</h4>
+            <div id="mcp-proposals-list" class="mcp-list">
+              <div class="mcp-empty">No pending tool proposals.</div>
+            </div>
+          </div>
+
+          <!-- Connected MCP Servers -->
+          <div class="mcp-section">
+            <h4>Connected MCP Servers</h4>
+            <div id="mcp-servers-list" class="mcp-list">
+              <div class="mcp-empty">No external MCP servers connected.</div>
+            </div>
+          </div>
+
+          <!-- Connect New MCP Server Form -->
+          <div class="mcp-section">
+            <h4>Mount MCP Server</h4>
+            <form id="form-connect-mcp" class="mcp-form">
+              <div class="form-row">
+                <input type="text" id="mcp-server-id" placeholder="Server ID (e.g. docker, homelab)" required>
+                <select id="mcp-transport">
+                  <option value="stdio">stdio (subprocess)</option>
+                  <option value="sse">SSE (HTTP endpoint)</option>
+                </select>
+              </div>
+              <div class="form-row" id="row-mcp-command">
+                <input type="text" id="mcp-command" placeholder="Command (e.g. uvx, npx, python)">
+                <input type="text" id="mcp-args" placeholder="Args space-separated (e.g. docker-mcp)">
+              </div>
+              <div class="form-row hidden" id="row-mcp-url">
+                <input type="text" id="mcp-url" placeholder="URL (e.g. http://localhost:8080/sse)">
+              </div>
+              <button type="submit" class="btn-mcp-submit" id="btn-submit-mcp">Mount Server</button>
+            </form>
+          </div>
+
+          <!-- Active Tools Registry -->
+          <div class="mcp-section">
+            <h4>Active Tools Registry (<span id="mcp-tool-count">0</span>)</h4>
+            <div id="mcp-tools-list" class="mcp-badge-list"></div>
+          </div>
         </div>
       </div>
 

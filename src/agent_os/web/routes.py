@@ -10,6 +10,7 @@ from starlette.routing import Route
 
 from agent_os.domain.kernel import UserTurnRequest
 from agent_os.kernel.master_kernel import AgentOSKernel
+from agent_os.mcp.client import McpServerConfig
 from agent_os.web.session_queries import get_session_turn_history, list_recent_sessions
 
 
@@ -127,6 +128,73 @@ def build_api_routes(kernel: AgentOSKernel) -> list[Route]:
 
         return StreamingResponse(sse_event_generator(), media_type="text/event-stream")
 
+    async def get_mcp_status(_request: Request) -> JSONResponse:
+        servers = [
+            {"server_id": sid, "tools": kernel.mcp_supervisor.get_server_tools(sid)}
+            for sid in kernel.mcp_supervisor.list_connected_servers()
+        ]
+        proposals = []
+        if getattr(kernel, "toolsmith", None):
+            for p in kernel.toolsmith.list_proposals():
+                proposals.append({
+                    "tool_name": p.tool_name,
+                    "domain": p.domain,
+                    "description": p.description,
+                    "verified": p.verified,
+                    "dry_run_output": p.dry_run_output,
+                    "staged_path": p.staged_path,
+                })
+        tools = [
+            {"name": name, "tier": str(tier.value if hasattr(tier, "value") else tier)}
+            for name, tier in kernel._tool_tiers.items()
+        ]
+        return JSONResponse({"servers": servers, "proposals": proposals, "tools": tools})
+
+    async def connect_mcp_server(request: Request) -> JSONResponse:
+        try:
+            body = await request.json()
+        except Exception:
+            return JSONResponse({"error": "Invalid JSON body"}, status_code=400)
+        server_id = body.get("server_id")
+        if not server_id:
+            return JSONResponse({"error": "server_id is required"}, status_code=400)
+        cfg = McpServerConfig(
+            server_id=server_id,
+            transport=body.get("transport", "stdio"),
+            command=body.get("command"),
+            args=body.get("args", []),
+            url=body.get("url"),
+            env=body.get("env", {}),
+        )
+        try:
+            mcp_tools = await kernel.mount_mcp_server(cfg)
+            return JSONResponse({
+                "server_id": server_id,
+                "status": "connected",
+                "tools": [t.name for t in mcp_tools],
+            })
+        except Exception as exc:
+            return JSONResponse({"error": str(exc)}, status_code=500)
+
+    async def activate_proposal(request: Request) -> JSONResponse:
+        tool_name = request.path_params["tool_name"]
+        try:
+            live_tools = await kernel.activate_tool_proposal(tool_name)
+            return JSONResponse({
+                "status": "activated",
+                "tool_name": tool_name,
+                "live_tools": [t.name for t in live_tools],
+            })
+        except Exception as exc:
+            return JSONResponse({"error": str(exc)}, status_code=500)
+
+    async def reject_proposal(request: Request) -> JSONResponse:
+        tool_name = request.path_params["tool_name"]
+        if getattr(kernel, "toolsmith", None):
+            res = kernel.toolsmith.reject_proposal(tool_name)
+            return JSONResponse({"status": "rejected" if res else "not_found", "tool_name": tool_name})
+        return JSONResponse({"error": "Toolsmith not configured"}, status_code=500)
+
     return [
         Route("/api/health", get_health, methods=["GET"]),
         Route("/api/sessions", get_sessions, methods=["GET"]),
@@ -134,4 +202,8 @@ def build_api_routes(kernel: AgentOSKernel) -> list[Route]:
         Route("/api/sessions/{session_id}/turns", get_session_turns, methods=["GET"]),
         Route("/api/ambient", get_ambient_nudges, methods=["GET"]),
         Route("/api/chat/stream", chat_stream, methods=["POST"]),
+        Route("/api/mcp/status", get_mcp_status, methods=["GET"]),
+        Route("/api/mcp/servers", connect_mcp_server, methods=["POST"]),
+        Route("/api/mcp/proposals/{tool_name}/activate", activate_proposal, methods=["POST"]),
+        Route("/api/mcp/proposals/{tool_name}/reject", reject_proposal, methods=["POST"]),
     ]

@@ -23,6 +23,17 @@
   const ambientDrawer = document.getElementById("ambient-drawer");
   const btnCloseAmbient = document.getElementById("btn-close-ambient");
   const ambientList = document.getElementById("ambient-list");
+  const btnMcp = document.getElementById("btn-mcp");
+  const mcpDrawer = document.getElementById("mcp-drawer");
+  const btnCloseMcp = document.getElementById("btn-close-mcp");
+  const mcpProposalsList = document.getElementById("mcp-proposals-list");
+  const mcpServersList = document.getElementById("mcp-servers-list");
+  const formConnectMcp = document.getElementById("form-connect-mcp");
+  const mcpTransport = document.getElementById("mcp-transport");
+  const rowMcpCommand = document.getElementById("row-mcp-command");
+  const rowMcpUrl = document.getElementById("row-mcp-url");
+  const mcpToolsList = document.getElementById("mcp-tools-list");
+  const mcpToolCount = document.getElementById("mcp-tool-count");
   const sidebar = document.getElementById("sidebar");
   const btnMenuToggle = document.getElementById("btn-menu-toggle");
 
@@ -459,10 +470,185 @@
     });
   });
 
+  // ---------------------------------------------------------------------------
+  // Tools & MCP Management
+  // ---------------------------------------------------------------------------
+  async function loadMcpStatus() {
+    try {
+      const res = await fetch("/api/mcp/status");
+      if (!res.ok) return;
+      const data = await res.json();
+
+      // 1. Proposals
+      mcpProposalsList.innerHTML = "";
+      if (data.proposals && data.proposals.length > 0) {
+        data.proposals.forEach((p) => {
+          const item = document.createElement("div");
+          item.className = "mcp-item";
+          item.innerHTML = `
+            <div class="mcp-item-header">
+              <span class="mcp-item-title">📦 ${escapeHtml(p.tool_name)}</span>
+              <span class="badge-count">${escapeHtml(p.domain)}</span>
+            </div>
+            <div class="mcp-item-desc">${escapeHtml(p.description)}</div>
+            ${p.dry_run_output ? `<div class="details">Dry Run: <code>${escapeHtml(p.dry_run_output.substring(0, 100))}</code></div>` : ""}
+            <div class="mcp-actions">
+              <button class="btn-approve" data-tool="${escapeHtml(p.tool_name)}">Approve & Mount</button>
+              <button class="btn-reject" data-tool="${escapeHtml(p.tool_name)}">Reject</button>
+            </div>
+          `;
+          mcpProposalsList.appendChild(item);
+        });
+
+        mcpProposalsList.querySelectorAll(".btn-approve").forEach((btn) => {
+          btn.addEventListener("click", () => approveToolProposal(btn.dataset.tool));
+        });
+        mcpProposalsList.querySelectorAll(".btn-reject").forEach((btn) => {
+          btn.addEventListener("click", () => rejectToolProposal(btn.dataset.tool));
+        });
+      } else {
+        mcpProposalsList.innerHTML = '<div class="mcp-empty">No pending tool proposals.</div>';
+      }
+
+      // 2. Servers
+      mcpServersList.innerHTML = "";
+      if (data.servers && data.servers.length > 0) {
+        data.servers.forEach((s) => {
+          const item = document.createElement("div");
+          item.className = "mcp-item";
+          item.innerHTML = `
+            <div class="mcp-item-header">
+              <span class="mcp-item-title">⚡ ${escapeHtml(s.server_id)}</span>
+              <span class="details">${s.tools.length} tools</span>
+            </div>
+            <div class="mcp-item-desc">${escapeHtml(s.tools.join(", ") || "No tools exported")}</div>
+          `;
+          mcpServersList.appendChild(item);
+        });
+      } else {
+        mcpServersList.innerHTML = '<div class="mcp-empty">No external MCP servers connected.</div>';
+      }
+
+      // 3. Active Tools
+      mcpToolsList.innerHTML = "";
+      if (data.tools && data.tools.length > 0) {
+        mcpToolCount.textContent = data.tools.length;
+        data.tools.forEach((t) => {
+          const badge = document.createElement("span");
+          const tierClass = (t.tier || "").toLowerCase().replace("-", "_");
+          badge.className = `mcp-badge ${tierClass}`;
+          badge.textContent = t.name;
+          badge.title = `Tier: ${t.tier}`;
+          mcpToolsList.appendChild(badge);
+        });
+      } else {
+        mcpToolCount.textContent = "0";
+      }
+    } catch (err) {
+      console.warn("Failed to load MCP status:", err);
+    }
+  }
+
+  async function approveToolProposal(toolName) {
+    try {
+      const res = await fetch(`/api/mcp/proposals/${encodeURIComponent(toolName)}/activate`, {
+        method: "POST",
+      });
+      if (res.ok) {
+        await loadMcpStatus();
+      } else {
+        const err = await res.json();
+        alert(`Failed to activate tool: ${err.error || "Unknown error"}`);
+      }
+    } catch (err) {
+      alert(`Activation error: ${err.message}`);
+    }
+  }
+
+  async function rejectToolProposal(toolName) {
+    try {
+      const res = await fetch(`/api/mcp/proposals/${encodeURIComponent(toolName)}/reject`, {
+        method: "POST",
+      });
+      if (res.ok) {
+        await loadMcpStatus();
+      }
+    } catch (err) {
+      console.warn("Rejection error:", err);
+    }
+  }
+
+  // Toggle transport fields
+  if (mcpTransport) {
+    mcpTransport.addEventListener("change", () => {
+      if (mcpTransport.value === "sse") {
+        rowMcpCommand.classList.add("hidden");
+        rowMcpUrl.classList.remove("hidden");
+      } else {
+        rowMcpCommand.classList.remove("hidden");
+        rowMcpUrl.classList.add("hidden");
+      }
+    });
+  }
+
+  // Form submit to mount MCP server
+  if (formConnectMcp) {
+    formConnectMcp.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const serverId = document.getElementById("mcp-server-id").value.trim();
+      const transport = mcpTransport.value;
+      const cmd = document.getElementById("mcp-command").value.trim();
+      const rawArgs = document.getElementById("mcp-args").value.trim();
+      const url = document.getElementById("mcp-url").value.trim();
+
+      const payload = {
+        server_id: serverId,
+        transport: transport,
+        command: cmd || undefined,
+        args: rawArgs ? rawArgs.split(/\s+/) : [],
+        url: url || undefined,
+      };
+
+      try {
+        const res = await fetch("/api/mcp/servers", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (res.ok) {
+          formConnectMcp.reset();
+          await loadMcpStatus();
+        } else {
+          const err = await res.json();
+          alert(`Failed to connect MCP server: ${err.error || "Unknown error"}`);
+        }
+      } catch (err) {
+        alert(`Connection error: ${err.message}`);
+      }
+    });
+  }
+
+  // MCP Drawer toggle
+  if (btnMcp) {
+    btnMcp.addEventListener("click", () => {
+      mcpDrawer.classList.toggle("hidden");
+      if (!mcpDrawer.classList.contains("hidden")) {
+        loadMcpStatus();
+      }
+    });
+  }
+
+  if (btnCloseMcp) {
+    btnCloseMcp.addEventListener("click", () => {
+      mcpDrawer.classList.add("hidden");
+    });
+  }
+
   // Initial Boot
   loadSessions();
   pollHealth();
   pollAmbient();
+  loadMcpStatus();
   setInterval(pollAmbient, 10000);
   setInterval(pollHealth, 30000);
 })();

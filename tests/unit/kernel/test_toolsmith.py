@@ -71,3 +71,25 @@ async def test_toolsmith_synthesis_and_dry_run(toolsmith_setup):
 
     finally:
         await supervisor.disconnect_all()
+
+
+@pytest.mark.asyncio
+async def test_toolsmith_proposal_lifecycle(toolsmith_setup):
+    """Verify proposal caching, lookup by name, activation, and rejection."""
+    worker, supervisor, mcp_hub, wiki_store = toolsmith_setup
+    try:
+        req = ToolsmithSynthesisRequest(task="Test proposal lookup", domain="Homelab")
+        p = await worker.synthesize_and_verify(req)
+        assert len(worker.list_proposals()) == 1
+        assert worker.get_proposal(p.tool_name) == p
+
+        # Activate by name
+        tools = await worker.activate_proposal_by_name(p.tool_name, supervisor)
+        assert any(t.name == f"mcp_hub_{p.tool_name}" for t in tools)
+
+        # Reject proposal
+        assert worker.reject_proposal(p.tool_name) is True
+        assert worker.get_proposal(p.tool_name) is None
+        assert len(worker.list_proposals()) == 0
+    finally:
+        await supervisor.disconnect_all()

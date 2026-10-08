@@ -33,6 +33,7 @@ class ToolsmithWorker:
         self.mcp_hub = mcp_hub
         self.model_adapter = model_adapter
         self.wiki_store = wiki_store
+        self._proposals: dict[str, ToolsmithProposal] = {}
 
     def _fallback_scaffold(self, task: str, domain: str) -> tuple[str, str, str, dict[str, Any]]:
         """Deterministic scaffold when model generation is absent or in tests."""
@@ -182,7 +183,7 @@ updated: {now}
             inbox_dir.mkdir(parents=True, exist_ok=True)
             (inbox_dir / filename).write_text(content, encoding="utf-8")
 
-        return ToolsmithProposal(
+        proposal = ToolsmithProposal(
             tool_name=tool_name,
             domain=request.domain,
             description=desc,
@@ -192,6 +193,16 @@ updated: {now}
             verified=True,
             staged_path=staged_path,
         )
+        self._proposals[proposal.tool_name] = proposal
+        return proposal
+
+    def list_proposals(self) -> list[ToolsmithProposal]:
+        """Return all staged tool proposals."""
+        return list(self._proposals.values())
+
+    def get_proposal(self, tool_name: str) -> ToolsmithProposal | None:
+        """Lookup proposal by tool name."""
+        return self._proposals.get(tool_name)
 
     async def activate_proposal(
         self, proposal: ToolsmithProposal, supervisor: McpClientSupervisor
@@ -202,3 +213,24 @@ updated: {now}
 
         self.mcp_hub.register_tool_code(proposal.tool_name, proposal.code_snippet)
         return await self.mcp_hub.reload_hub(supervisor)
+
+    async def activate_proposal_by_name(
+        self, tool_name: str, supervisor: McpClientSupervisor
+    ) -> list[ToolDefinition]:
+        """Activate a staged proposal by its tool name."""
+        proposal = self.get_proposal(tool_name)
+        if not proposal:
+            raise ValueError(f"No proposal found for tool '{tool_name}'")
+        return await self.activate_proposal(proposal, supervisor)
+
+    def reject_proposal(self, tool_name: str) -> bool:
+        """Reject and remove a proposed tool from staging."""
+        proposal = self._proposals.pop(tool_name, None)
+        if proposal and proposal.staged_path and self.wiki_store:
+            try:
+                target = self.wiki_store.root_dir / proposal.staged_path
+                if target.exists():
+                    target.unlink()
+            except Exception:
+                pass
+        return proposal is not None

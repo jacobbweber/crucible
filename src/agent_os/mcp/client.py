@@ -50,6 +50,14 @@ class McpClientSupervisor:
         """Check if an MCP server connection is active."""
         return server_id in self._sessions
 
+    def list_connected_servers(self) -> list[str]:
+        """Return list of active server IDs."""
+        return list(self._sessions.keys())
+
+    def get_server_tools(self, server_id: str) -> list[str]:
+        """Return list of tool names associated with a server ID."""
+        return [t for t, sid in self._tool_to_server.items() if sid == server_id]
+
     def get_registered_tools(self) -> list[ToolDefinition]:
         """Return all discovered tool definitions across all active MCP servers."""
         return list(self._tool_definitions.values())

@@ -97,3 +97,16 @@ def test_chat_stream_returns_sse_events(test_client):
     assert res.status_code == 200
     assert "text/event-stream" in res.headers.get("content-type", "")
     assert "event: " in res.text
+
+
+def test_mcp_status_endpoint(test_client):
+    """Verify /api/mcp/status returns servers, proposals, and tools."""
+    res = test_client.get("/api/mcp/status")
+    assert res.status_code == 200
+    data = res.json()
+    assert "servers" in data
+    assert "proposals" in data
+    assert "tools" in data
+    tool_names = [t["name"] for t in data["tools"]]
+    assert "workspace_read" in tool_names
+    assert "workspace_command" in tool_names

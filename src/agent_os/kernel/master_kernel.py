@@ -177,17 +177,9 @@ class AgentOSKernel:
 
     def _register_default_tools(self) -> None:
         """Register built-in wiki, education, telemetry, session, and workspace tools."""
-        suites = (
-            self.wiki_tools,
-            self.education_tools,
-            self.telemetry_tools,
-            self.session_tools,
-            self.workspace_tools,
-        )
-        for suite in suites:
-            for defn in suite.get_definitions():
-                fn = getattr(suite, defn.name, None)
-                if fn:
+        for s in (self.wiki_tools, self.education_tools, self.telemetry_tools, self.session_tools, self.workspace_tools):
+            for defn in s.get_definitions():
+                if fn := getattr(s, defn.name, None):
                     self.register_tool(defn.name, fn, defn.action_tier, definition=defn)
 
     def register_tool(
@@ -205,16 +197,24 @@ class AgentOSKernel:
         )
         self.tool_dispatcher[name] = make_tool_invoker(name, fn, self.credential_proxy)
 
-    async def mount_mcp_server(self, config: McpServerConfig) -> list[ToolDefinition]:
-        """Mount an external or local MCP server and register its tools into the active kernel."""
-        tools = await self.mcp_supervisor.connect(config)
+    def _register_mcp_tools(self, tools: list[ToolDefinition]) -> None:
         for t_def in tools:
             def _bind(tool_name: str) -> Callable[..., Coroutine[Any, Any, ToolExecutionResult]]:
                 async def _call(**kwargs: Any) -> ToolExecutionResult:
                     return await self.mcp_supervisor.call_tool(tool_name, kwargs)
                 return _call
-
             self.register_tool(t_def.name, _bind(t_def.name), t_def.action_tier, definition=t_def)
+
+    async def mount_mcp_server(self, config: McpServerConfig) -> list[ToolDefinition]:
+        """Mount an external or local MCP server and register its tools into the active kernel."""
+        tools = await self.mcp_supervisor.connect(config)
+        self._register_mcp_tools(tools)
+        return tools
+
+    async def activate_tool_proposal(self, tool_name: str) -> list[ToolDefinition]:
+        """Activate a staged tool proposal into the FastMCP Hub and register tools live."""
+        tools = await self.toolsmith.activate_proposal_by_name(tool_name, self.mcp_supervisor)
+        self._register_mcp_tools(tools)
         return tools
 
 
@@ -238,6 +238,25 @@ class AgentOSKernel:
 
     async def stream_user_turn(self, request: UserTurnRequest) -> AsyncIterator[StreamTurnEvent]:
         """Stream an interactive user turn progressively (K1)."""
+        cmd = request.user_input.strip()
+        if cmd.startswith("/approve"):
+            parts = cmd.split(maxsplit=1)
+            name = parts[1].strip() if len(parts) > 1 else ""
+            if name:
+                try:
+                    tools = await self.activate_tool_proposal(name)
+                    t_names = ", ".join(f"`{t.name}`" for t in tools)
+                    msg = f"Tool `{name}` approved and mounted! Live tools: {t_names}"
+                    self.session_repo.append_turn(request.session_id, "user", request.user_input, 10)
+                    t_rec = self.session_repo.append_turn(request.session_id, "assistant", msg, 20)
+                    yield StreamTurnEvent(event_type="delta", delta=msg)
+                    yield StreamTurnEvent(event_type="completed", turn=t_rec)
+                    return
+                except Exception as exc:
+                    err = f"Failed to approve proposal `{name}`: {exc}"
+                    yield StreamTurnEvent(event_type="error", error_message=err)
+                    return
+
         facts_payload = self.fact_prefetcher.prefetch_for_turn(request.user_input)
         deferred_block = self.signaler.format_deferred_prompt_block(request.session_id)
         chat_loop = CompanionChatLoop(

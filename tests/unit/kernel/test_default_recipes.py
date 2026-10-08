@@ -17,27 +17,29 @@ def test_ensure_default_recipes_seeds_catalog(tmp_path: Path) -> None:
     # Seed recipes
     ensure_default_recipes(repo)
     recipes = repo.list_recipes()
-    assert len(recipes) == 3
+    assert len(recipes) == 5
 
     # Check recipe IDs
     ids = {r.metadata.recipe_id for r in recipes}
     assert "self_health_audit" in ids
     assert "weekly_warehouse_graduation" in ids
     assert "deep_topic_synthesis" in ids
+    assert "docker_container_orchestration" in ids
+    assert "custom_tool_authoring" in ids
 
     # Check FTS5 intent matching
     health_matches = repo.match_intent("check system health errors and audit vitals")
     assert len(health_matches) >= 1
     assert health_matches[0].recipe.metadata.recipe_id == "self_health_audit"
 
-    grad_matches = repo.match_intent("graduate inbox notes to knowledge")
-    assert len(grad_matches) >= 1
-    assert grad_matches[0].recipe.metadata.recipe_id == "weekly_warehouse_graduation"
+    docker_matches = repo.match_intent("inspect docker containers and logs")
+    assert len(docker_matches) >= 1
+    assert docker_matches[0].recipe.metadata.recipe_id == "docker_container_orchestration"
 
-    synth_matches = repo.match_intent("synthesize topic across past history")
-    assert len(synth_matches) >= 1
-    assert synth_matches[0].recipe.metadata.recipe_id == "deep_topic_synthesis"
+    author_matches = repo.match_intent("synthesize custom fastmcp tool")
+    assert len(author_matches) >= 1
+    assert author_matches[0].recipe.metadata.recipe_id == "custom_tool_authoring"
 
     # Idempotent re-run
     ensure_default_recipes(repo)
-    assert len(repo.list_recipes()) == 3
+    assert len(repo.list_recipes()) == 5
