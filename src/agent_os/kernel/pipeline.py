@@ -22,11 +22,13 @@ class JobAssemblyPipeline:
         signaler: CompletionSignaler,
         recipe_repo: RecipeRepository,
         capability_scout: Any | None = None,
+        toolsmith: Any | None = None,
     ) -> None:
         self.dispatcher = dispatcher
         self.signaler = signaler
         self.recipe_repo = recipe_repo
         self.capability_scout = capability_scout
+        self.toolsmith = toolsmith
 
     def triage_capability_gap(self, task: str, available_tools: list[str]) -> CapabilityGapReport:
         """Triage whether a task can be satisfied by catalog recipes or requires synthesis."""
@@ -85,41 +87,50 @@ class JobAssemblyPipeline:
                 await res
 
         # 1b. Check if task targets an external domain missing from available tools
-        if self.capability_scout and gap_report.has_gap:
-            missing_domain = self.capability_scout.identify_missing_domain(
-                request.task, request.available_tools
-            )
-            if missing_domain:
-                if on_status is not None:
-                    status_msg = (
-                        f"Detected missing capability '{missing_domain}'. "
-                        "Staging MCP integration proposal in 00_Inbox..."
-                    )
-                    res = on_status(status_msg)
-                    if inspect.iscoroutine(res):
-                        await res
-
-                staged_path = self.capability_scout.stage_mcp_proposal(
-                    request.task, missing_domain
+        if (self.capability_scout or self.toolsmith) and gap_report.has_gap:
+            missing_domain = None
+            if self.capability_scout:
+                missing_domain = self.capability_scout.identify_missing_domain(
+                    request.task, request.available_tools
                 )
+            if missing_domain:
+                if self.toolsmith:
+                    if on_status is not None:
+                        res = on_status(f"Synthesizing FastMCP tool for '{missing_domain}' and running dry run...")
+                        if inspect.iscoroutine(res):
+                            await res
+                    from agent_os.domain.toolsmith import ToolsmithSynthesisRequest
+
+                    synth_req = ToolsmithSynthesisRequest(task=request.task, domain=missing_domain, available_tools=request.available_tools)
+                    prop = await self.toolsmith.synthesize_and_verify(synth_req)
+                    staged_path = prop.staged_path
+                    if prop.verified:
+                        summary = (
+                            f"[TOOL_PROPOSAL: {prop.tool_name}] Verified via pre-flight dry run. "
+                            f"Output: '{prop.dry_run_output}'. Ready for mounting."
+                        )
+                    else:
+                        summary = f"Tool synthesis for '{missing_domain}' failed dry run: {prop.error_message}"
+                else:
+                    if on_status is not None:
+                        res = on_status(f"Detected missing capability '{missing_domain}'. Staging proposal...")
+                        if inspect.iscoroutine(res):
+                            await res
+                    staged_path = self.capability_scout.stage_mcp_proposal(request.task, missing_domain)
+                    summary = f"Missing tool for '{missing_domain}'. Prepared capability proposal in {staged_path}."
+
                 from agent_os.domain.dispatch import DispatchDecision, DispatchResult
                 from agent_os.domain.ipc import SubJobReturnEnvelope
 
                 envelope = SubJobReturnEnvelope(
                     journey_id=f"gap_{request.session_id}",
                     status="completed",
-                    summary=(
-                        f"Missing tool for '{missing_domain}'. Prepared capability proposal "
-                        f"recommending MCP over CLI tools in {staged_path}."
-                    ),
-                    artifact_paths=[staged_path],
+                    summary=summary,
+                    artifact_paths=[staged_path] if staged_path else [],
                     token_estimate=50,
                 )
                 dispatch_res = DispatchResult(
-                    decision=DispatchDecision(
-                        task=request.task,
-                        stage="assembled_ephemeral",
-                    ),
+                    decision=DispatchDecision(task=request.task, stage="assembled_ephemeral"),
                     envelope=envelope,
                 )
                 self.signaler.signal_completion(request.session_id, envelope)
@@ -130,6 +141,7 @@ class JobAssemblyPipeline:
                     gap_report=gap_report,
                     flagged_for_graduation=False,
                 )
+
 
         # 2. Dispatch execution via ZeroCatalogDispatcher
         dispatch_res = await self.dispatcher.dispatch_task(

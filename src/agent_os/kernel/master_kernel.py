@@ -55,6 +55,7 @@ from agent_os.kernel.tool_invoker import make_tool_invoker
 from agent_os.kernel.wiki_tools import WikiToolSuite
 from agent_os.mcp.client import McpClientSupervisor, McpServerConfig
 from agent_os.mcp.hub import McpHubManager
+from agent_os.kernel.toolsmith import ToolsmithWorker
 
 
 class AgentOSKernel:
@@ -141,11 +142,19 @@ class AgentOSKernel:
             model_adapter=model_adapter,
         )
         self.capability_scout = CapabilityScout(wiki_store=self.wiki_store)
+        self.toolsmith = ToolsmithWorker(
+            workspace_manager=self.workspace_manager,
+            command_runner=self.workspace_runner,
+            mcp_hub=self.mcp_hub,
+            model_adapter=model_adapter,
+            wiki_store=self.wiki_store,
+        )
         self.assembly_pipeline = JobAssemblyPipeline(
             dispatcher=self.dispatcher,
             signaler=self.signaler,
             recipe_repo=recipe_repo,
             capability_scout=self.capability_scout,
+            toolsmith=self.toolsmith,
         )
 
         # Scheduler with completion signaling and persistence (H6)
