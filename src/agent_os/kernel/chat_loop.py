@@ -1,5 +1,6 @@
 """Interactive companion session orchestrator managing turns and context sliding window."""
 
+import asyncio
 import inspect
 import json
 import re
@@ -218,17 +219,23 @@ class CompanionChatLoop:
                 tasks = extract_dispatch_directives(accumulated_text)
                 for task in tasks:
                     try:
-                        status_msgs: list[str] = []
+                        q: asyncio.Queue[str] = asyncio.Queue()
                         sig = inspect.signature(self.job_dispatcher)
-                        if "on_status" in sig.parameters:
-                            job_res = await self.job_dispatcher(
-                                self.session_id, task, on_status=status_msgs.append
-                            )
-                        else:
-                            job_res = await self.job_dispatcher(self.session_id, task)
-
-                        for msg in status_msgs:
-                            yield StreamTurnEvent(event_type="status", delta=msg)
+                        coro = (
+                            self.job_dispatcher(self.session_id, task, on_status=q.put_nowait)
+                            if "on_status" in sig.parameters
+                            else self.job_dispatcher(self.session_id, task)
+                        )
+                        fut = asyncio.create_task(coro)
+                        while not fut.done():
+                            try:
+                                msg = await asyncio.wait_for(q.get(), timeout=1.0)
+                                yield StreamTurnEvent(event_type="status", delta=msg)
+                            except TimeoutError:
+                                pass
+                        job_res = await fut
+                        while not q.empty():
+                            yield StreamTurnEvent(event_type="status", delta=q.get_nowait())
 
                         gap_rep = getattr(job_res, "gap_report", None)
                         if gap_rep is not None and getattr(gap_rep, "has_gap", False):

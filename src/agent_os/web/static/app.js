@@ -46,70 +46,128 @@
     return div.innerHTML;
   }
 
+  function formatMarkdown(rawText) {
+    if (!rawText) return "";
+    let s = rawText.trim();
+
+    // 1. Extract code blocks first
+    const codeBlocks = [];
+    s = s.replace(/```([a-zA-Z0-9_\-\.]*)\n?([\s\S]*?)```/g, (_m, lang, code) => {
+      const idx = codeBlocks.length;
+      codeBlocks.push(`<pre><code class="language-${escapeHtml(lang)}">${escapeHtml(code.trim())}</code></pre>`);
+      return `%%CODEBLOCK_${idx}%%`;
+    });
+
+    // 2. Extract inline code
+    const inlineCodes = [];
+    s = s.replace(/`([^`]+)`/g, (_m, code) => {
+      const idx = inlineCodes.length;
+      inlineCodes.push(`<code>${escapeHtml(code)}</code>`);
+      return `%%INLINECODE_${idx}%%`;
+    });
+
+    // 3. Escape HTML on prose
+    s = escapeHtml(s);
+
+    // 4. Tables: parse markdown tables (| col | col |)
+    s = s.replace(/((?:^|\n)\s*\|[^\n]+\|\s*(?:\n\s*\|[^\n]+\|\s*)+)/g, (match) => {
+      const lines = match.trim().split("\n").map(l => l.trim()).filter(Boolean);
+      if (lines.length < 2) return match;
+
+      const sep = lines[1].replace(/\|/g, "").replace(/\s/g, "");
+      if (!/^[-:]+$/.test(sep)) return match;
+
+      const parseRow = (line) => {
+        let cells = line.split("|");
+        if (cells.length > 0 && cells[0].trim() === "") cells.shift();
+        if (cells.length > 0 && cells[cells.length - 1].trim() === "") cells.pop();
+        return cells;
+      };
+
+      const headerCells = parseRow(lines[0]).map(c => `<th>${c.trim()}</th>`).join("");
+      const bodyRows = lines.slice(2).map(row => {
+        const cells = parseRow(row).map(c => `<td>${c.trim()}</td>`).join("");
+        return `<tr>${cells}</tr>`;
+      }).join("");
+
+      return `\n<div class="table-wrapper"><table class="markdown-table"><thead><tr>${headerCells}</tr></thead><tbody>${bodyRows}</tbody></table></div>\n`;
+    });
+
+    // 5. Headings
+    s = s.replace(/(?:^|\n)#### (.*$)/gim, "\n<h4>$1</h4>");
+    s = s.replace(/(?:^|\n)### (.*$)/gim, "\n<h3>$1</h3>");
+    s = s.replace(/(?:^|\n)## (.*$)/gim, "\n<h2>$1</h2>");
+    s = s.replace(/(?:^|\n)# (.*$)/gim, "\n<h1>$1</h1>");
+
+    // 6. Bold & Italic
+    s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+    s = s.replace(/(^|[^*])\*([^*]+)\*/g, "$1<em>$2</em>");
+
+    // 7. Bullet lists
+    s = s.replace(/(?:^|\n)\s*[-*]\s+(.*)/g, "\n<li>$1</li>");
+    s = s.replace(/((?:<li>.*<\/li>\s*)+)/g, "<ul>$1</ul>");
+
+    // 8. Restore inline code and code blocks
+    inlineCodes.forEach((code, idx) => {
+      s = s.replace(new RegExp(`%%INLINECODE_${idx}%%`, "g"), code);
+    });
+    codeBlocks.forEach((block, idx) => {
+      s = s.replace(new RegExp(`%%CODEBLOCK_${idx}%%`, "g"), block);
+    });
+
+    // 9. Paragraphs and line breaks
+    const rawParts = s.split(/\n\s*\n/);
+    const formatted = rawParts.map(p => {
+      const trimmed = p.trim();
+      if (!trimmed) return "";
+      if (
+        trimmed.startsWith("<pre>") ||
+        trimmed.startsWith("<ul>") ||
+        trimmed.startsWith("<div") ||
+        trimmed.startsWith("<h") ||
+        trimmed.startsWith("<table")
+      ) {
+        return trimmed;
+      }
+      return `<p>${trimmed.replace(/\n/g, "<br>")}</p>`;
+    }).filter(Boolean);
+
+    return formatted.join("\n");
+  }
+
   function renderMarkdown(rawText) {
     if (!rawText) return "";
-    let html = rawText;
+    let text = rawText;
 
     // Extract <think> reasoning block
     let thinkingBlock = "";
-    html = html.replace(/<think>([\s\S]*?)<\/think>/gi, (_m, reasoning) => {
+    text = text.replace(/<think>([\s\S]*?)<\/think>/gi, (_m, reasoning) => {
       thinkingBlock = `<div class="reasoning-box">
         <div class="reasoning-toggle" onclick="this.nextElementSibling.classList.toggle('hidden')">
           <span>🧠</span> Thinking Process (Click to toggle)
         </div>
-        <div class="reasoning-body hidden">${escapeHtml(reasoning.trim())}</div>
+        <div class="reasoning-body hidden">${formatMarkdown(reasoning)}</div>
       </div>`;
       return "";
     });
 
-    let safeHtml = escapeHtml(html.trim());
-
-    // Format [DISPATCH: task] into styled directive card
-    safeHtml = safeHtml.replace(/\[DISPATCH:\s*([^\]]+)\]/gi, (_m, task) => {
-      return `<div class="directive-card">
+    // Extract [DISPATCH: task] directives
+    text = text.replace(/\[DISPATCH:\s*([^\]]+)\]/gi, (_m, task) => {
+      return `\n\n<div class="directive-card">
         <div class="directive-header"><span class="directive-icon">⚡</span> <strong>Background Directive Dispatched</strong></div>
-        <div class="directive-body">${task.trim()}</div>
-      </div>`;
+        <div class="directive-body">${formatMarkdown(task)}</div>
+      </div>\n\n`;
     });
 
-    // Format [COMPLETED: summary] into styled completion card
-    safeHtml = safeHtml.replace(/\[COMPLETED:\s*([^\]]+)\]/gi, (_m, summary) => {
-      return `<div class="completion-card">
+    // Extract [COMPLETED: summary] directives
+    text = text.replace(/\[COMPLETED:\s*([\s\S]*?)\](?:\n|$)/gi, (_m, summary) => {
+      return `\n\n<div class="completion-card">
         <div class="completion-header"><span>✅</span> <strong>Directive Completed</strong></div>
-        <div class="completion-summary">${summary.trim()}</div>
-      </div>`;
+        <div class="completion-summary">${formatMarkdown(summary)}</div>
+      </div>\n\n`;
     });
 
-    // Code blocks: ```code```
-    safeHtml = safeHtml.replace(/```([a-zA-Z0-9_\-\.]*)\n([\s\S]*?)```/g, (_m, lang, code) => {
-      return `<pre><code class="language-${lang}">${code.trim()}</code></pre>`;
-    });
-
-    // Inline code: `code`
-    safeHtml = safeHtml.replace(/`([^`]+)`/g, "<code>$1</code>");
-
-    // Bold: **text**
-    safeHtml = safeHtml.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
-
-    // Headings: ###, ##, #
-    safeHtml = safeHtml.replace(/^### (.*$)/gim, "<h3>$1</h3>");
-    safeHtml = safeHtml.replace(/^## (.*$)/gim, "<h2>$1</h2>");
-    safeHtml = safeHtml.replace(/^# (.*$)/gim, "<h1>$1</h1>");
-
-    // Bullet lists: * or -
-    safeHtml = safeHtml.replace(/^\s*[-*]\s+(.*)$/gim, "<li>$1</li>");
-    safeHtml = safeHtml.replace(/(<li>[\s\S]*?<\/li>)/g, "<ul>$1</ul>");
-    safeHtml = safeHtml.replace(/<\/ul>\s*<ul>/g, "");
-
-    // Line breaks
-    let formatted = safeHtml.split("\n\n").map(para => {
-      if (para.startsWith("<pre>") || para.startsWith("<ul>") || para.startsWith("<h") || para.startsWith("<div")) {
-        return para;
-      }
-      return `<p>${para.replace(/\n/g, "<br>")}</p>`;
-    }).join("");
-
-    return thinkingBlock + formatted;
+    return thinkingBlock + formatMarkdown(text);
   }
 
   // ---------------------------------------------------------------------------
@@ -340,7 +398,7 @@
                 scrollToBottom();
               } else if (currentEvent === "job_dispatched") {
                 if (data.summary) {
-                  addAmbientNotice(`Directive Finished: ${data.summary}`);
+                  addAmbientNotice("Directive Completed", data.summary);
                 }
               } else if (currentEvent === "ambient_nudge") {
                 addAmbientNotice(data.notice);
@@ -369,13 +427,16 @@
   // ---------------------------------------------------------------------------
   // Ambient Notifications & Health Polling
   // ---------------------------------------------------------------------------
-  function addAmbientNotice(noticeText) {
+  function addAmbientNotice(noticeText, detailsText = "") {
     const emptyEl = ambientList.querySelector(".ambient-empty");
     if (emptyEl) emptyEl.remove();
 
     const item = document.createElement("div");
     item.className = "ambient-item";
-    item.innerHTML = `<div class="notice">🔔 ${escapeHtml(noticeText)}</div>`;
+    item.innerHTML = `
+      <div class="notice">🔔 ${escapeHtml(noticeText)}</div>
+      ${detailsText ? `<div class="details">${formatMarkdown(detailsText)}</div>` : ""}
+    `;
     ambientList.prepend(item);
 
     const currentCount = parseInt(ambientBadge.textContent || "0", 10) + 1;
@@ -397,7 +458,7 @@
           item.className = "ambient-item";
           item.innerHTML = `
             <div class="notice">🔔 ${escapeHtml(n.short_notice)}</div>
-            ${n.details ? `<div class="details">${escapeHtml(n.details)}</div>` : ""}
+            ${n.details ? `<div class="details">${formatMarkdown(n.details)}</div>` : ""}
           `;
           ambientList.appendChild(item);
         });

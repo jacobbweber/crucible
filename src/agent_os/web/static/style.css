@@ -769,7 +769,84 @@ html, body {
 .completion-summary {
   font-size: 0.88rem;
   color: #d1fae5;
+  line-height: 1.5;
+}
+
+.completion-summary h1, .completion-summary h2, .completion-summary h3, .completion-summary h4 {
+  margin: 10px 0 4px 0;
+  color: #34d399;
+  font-weight: 600;
+}
+
+.completion-summary h2 {
+  font-size: 1.05rem;
+}
+
+.completion-summary h3 {
+  font-size: 0.95rem;
+}
+
+.completion-summary h4 {
+  font-size: 0.88rem;
+}
+
+.completion-summary ul {
+  padding-left: 20px;
+  margin: 6px 0;
+}
+
+.completion-summary li {
+  margin-bottom: 4px;
+}
+
+/* ---------------- Markdown Tables ---------------- */
+.table-wrapper {
+  overflow-x: auto;
+  margin: 10px 0;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.markdown-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+  text-align: left;
+}
+
+.markdown-table th {
+  background: rgba(255, 255, 255, 0.08);
+  padding: 8px 12px;
+  font-weight: 600;
+  color: #f3f4f6;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  white-space: nowrap;
+}
+
+.markdown-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  color: #d1d5db;
+}
+
+.markdown-table tr:last-child td {
+  border-bottom: none;
+}
+
+.markdown-table tr:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.ambient-item .details {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  margin-top: 6px;
   line-height: 1.4;
+}
+
+.ambient-item .details .table-wrapper {
+  margin: 6px 0;
 }
 
 .status-pill {
