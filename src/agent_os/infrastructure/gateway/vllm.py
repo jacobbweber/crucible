@@ -2,7 +2,6 @@
 
 import json
 from collections.abc import AsyncIterator
-from typing import Any
 
 import httpx
 
@@ -14,7 +13,9 @@ from agent_os.domain.gateway import (
     estimate_tokens,
 )
 from agent_os.infrastructure.gateway.base import BaseModelAdapter
+from agent_os.infrastructure.gateway.openai_payload import build_payload
 from agent_os.infrastructure.gateway.semaphore import InferenceSemaphore
+from agent_os.infrastructure.gateway.tool_call_accumulator import ToolCallAccumulator
 
 
 class VllmAdapter(BaseModelAdapter):
@@ -43,15 +44,10 @@ class VllmAdapter(BaseModelAdapter):
             async for chunk in self._stream_request(request):
                 yield chunk
 
-    async def _stream_request(
-        self,
-        request: CompletionRequest,
-    ) -> AsyncIterator[StreamChunk]:
-        url = f"{self.config.vllm_base_url.rstrip('/')}/chat/completions"
+    def _clamp_max_tokens(self, request: CompletionRequest) -> int:
         prompt_tokens = sum(estimate_tokens(msg.text) for msg in request.messages)
         available_output = max(128, self.config.vllm_context_window - prompt_tokens)
-        clamped_max_tokens = min(request.max_tokens, available_output)
-
+        clamped = min(request.max_tokens, available_output)
         # G1 headroom: ensure output headroom when reasoning is enabled
         is_thinking = request.thinking_level in (
             ThinkingLevel.LOW,
@@ -59,104 +55,73 @@ class VllmAdapter(BaseModelAdapter):
             ThinkingLevel.HIGH,
             ThinkingLevel.MAX,
         ) or (request.thinking_level is None and self.config.vllm_enable_thinking is not False)
-        if is_thinking and clamped_max_tokens < 2048:
-            clamped_max_tokens = min(2048, available_output)
+        if is_thinking and clamped < 2048:
+            clamped = min(2048, available_output)
+        return clamped
 
-        # Format messages and resolve H3 (tool messages require tool_call_id)
-        formatted_messages: list[dict[str, Any]] = []
-        for msg in request.messages:
-            item: dict[str, Any] = {"role": msg.role, "content": msg.text}
-            if msg.name:
-                item["name"] = msg.name
-            if msg.tool_call_id:
-                item["tool_call_id"] = msg.tool_call_id
-            elif msg.role == "tool":
-                item["tool_call_id"] = f"call_{msg.name or 'default'}"
-            formatted_messages.append(item)
-
-        payload: dict[str, Any] = {
-            "model": request.model or self.config.vllm_model_name,
-            "messages": formatted_messages,
-            "temperature": request.temperature,
-            "max_tokens": clamped_max_tokens,
-            "stream": True,
-        }
-
-        # Apply normalized thinking ladder
-        level = request.thinking_level
-        if level == ThinkingLevel.NONE:
-            payload["chat_template_kwargs"] = {"enable_thinking": False}
-            payload["reasoning_effort"] = "none"
-        elif level is not None:
-            effort_map: dict[ThinkingLevel, str] = {
-                ThinkingLevel.LOW: "low",
-                ThinkingLevel.MEDIUM: "medium",
-                ThinkingLevel.HIGH: "high",
-                ThinkingLevel.MAX: "high",
-            }
-            payload["chat_template_kwargs"] = {"enable_thinking": True}
-            payload["reasoning_effort"] = effort_map.get(level, "high")
-        elif self.config.vllm_enable_thinking is not None:
-            payload["chat_template_kwargs"] = {"enable_thinking": self.config.vllm_enable_thinking}
-            if not self.config.vllm_enable_thinking:
-                payload["reasoning_effort"] = "none"
-
+    async def _stream_request(
+        self,
+        request: CompletionRequest,
+    ) -> AsyncIterator[StreamChunk]:
+        url = f"{self.config.vllm_base_url.rstrip('/')}/chat/completions"
+        payload = build_payload(request, self.config, self._clamp_max_tokens(request))
         headers = {
             "Authorization": f"Bearer {self.config.vllm_api_key}",
             "Content-Type": "application/json",
         }
-
         try:
             async with httpx.AsyncClient(
                 transport=self.transport,
                 timeout=self.config.vllm_request_timeout,
             ) as client:
-                async with client.stream(
-                    "POST",
-                    url,
-                    json=payload,
-                    headers=headers,
-                ) as response:
+                async with client.stream("POST", url, json=payload, headers=headers) as response:
                     if response.status_code != 200:
                         body = await response.aread()
-                        error_text = body.decode(errors="replace")
                         raise RuntimeError(
-                            f"Model API returned HTTP {response.status_code}: {error_text}"
+                            f"Model API returned HTTP {response.status_code}: "
+                            f"{body.decode(errors='replace')}"
                         )
-
-                    async for line in response.aiter_lines():
-                        stripped = line.strip()
-                        if not stripped or not stripped.startswith("data:"):
-                            continue
-
-                        data_str = stripped[len("data:") :].strip()
-                        if data_str == "[DONE]":
-                            break
-
-                        try:
-                            data = json.loads(data_str)
-                        except json.JSONDecodeError:
-                            continue
-
-                        choices = data.get("choices", [])
-                        if not choices:
-                            continue
-
-                        first_choice = choices[0]
-                        delta_dict = first_choice.get("delta", {})
-                        content = delta_dict.get("content", "") or ""
-                        reasoning = (
-                            delta_dict.get("reasoning") or delta_dict.get("reasoning_content") or ""
-                        )
-                        finish_reason = first_choice.get("finish_reason")
-
-                        if content or reasoning or finish_reason is not None:
-                            yield StreamChunk(
-                                delta=content,
-                                finish_reason=finish_reason,
-                                reasoning=reasoning,
-                            )
+                    async for chunk in self._parse_sse(response):
+                        yield chunk
         except httpx.TimeoutException as exc:
             raise RuntimeError(f"Model request timed out: {exc}") from exc
         except httpx.RequestError as exc:
             raise RuntimeError(f"Model request failed: {exc}") from exc
+
+    @staticmethod
+    async def _parse_sse(response: httpx.Response) -> AsyncIterator[StreamChunk]:
+        """Yield text/reasoning chunks; emit assembled tool calls once on the terminal chunk."""
+        calls = ToolCallAccumulator()
+        finished = False
+        async for line in response.aiter_lines():
+            stripped = line.strip()
+            if not stripped.startswith("data:"):
+                continue
+            data_str = stripped[len("data:") :].strip()
+            if data_str == "[DONE]":
+                break
+            try:
+                data = json.loads(data_str)
+            except json.JSONDecodeError:
+                continue
+            choices = data.get("choices") or []
+            if not choices:
+                continue
+            choice = choices[0]
+            delta = choice.get("delta") or {}
+            calls.add(delta.get("tool_calls") or [])
+            content = delta.get("content") or ""
+            reasoning = delta.get("reasoning") or delta.get("reasoning_content") or ""
+            finish_reason = choice.get("finish_reason")
+            if finish_reason is not None and not finished:
+                finished = True
+                yield StreamChunk(
+                    delta=content,
+                    reasoning=reasoning,
+                    finish_reason=finish_reason,
+                    tool_calls=calls.build(),
+                )
+            elif content or reasoning:
+                yield StreamChunk(delta=content, reasoning=reasoning)
+        if not finished and calls.has_calls:
+            yield StreamChunk(delta="", finish_reason="tool_calls", tool_calls=calls.build())

@@ -90,6 +90,36 @@ class ChatMessage(BaseModel):
         text_chunks = [p.text for p in self.parts if isinstance(p, TextPart)]
         return "".join(text_chunks)
 
+    @property
+    def tool_calls(self) -> list[ToolCallPart]:
+        """Return structured tool invocations carried by this message."""
+        return [p for p in self.parts if isinstance(p, ToolCallPart)]
+
+
+class ToolSpec(BaseModel):
+    """Native function-calling declaration offered to the model."""
+
+    name: str = Field(min_length=1, pattern=r"^[a-zA-Z0-9_\-]{1,64}$")
+    description: str = Field(min_length=1)
+    parameters: dict[str, Any] = Field(default_factory=lambda: {"type": "object", "properties": {}})
+
+
+class ResponseSchema(BaseModel):
+    """JSON Schema that constrains the model's final text output (constrained decoding)."""
+
+    name: str = Field(min_length=1, pattern=r"^[a-zA-Z0-9_\-]{1,64}$")
+    schema_: dict[str, Any] = Field(alias="schema")
+    strict: bool = True
+
+    model_config = {"populate_by_name": True}
+
+
+ToolChoice = Literal["auto", "none"] | str
+"""`auto`, `none`, or the name of a single tool the model must call.
+
+`required` is deliberately unsupported: live testing showed duplicate calls on vLLM targets.
+"""
+
 
 class CompletionRequest(BaseModel):
     """Model completion request schema."""
@@ -101,14 +131,22 @@ class CompletionRequest(BaseModel):
     temperature: float = Field(default=0.7, ge=0.0, le=2.0)
     max_tokens: int = Field(default=4096, gt=0)
     stream: bool = True
+    tools: list[ToolSpec] = Field(default_factory=list)
+    tool_choice: ToolChoice = "auto"
+    response_schema: ResponseSchema | None = None
 
 
 class StreamChunk(BaseModel):
-    """Single streamed token or finish reason chunk."""
+    """Single streamed token or finish reason chunk.
+
+    `tool_calls` carries fully assembled invocations and is only populated on the
+    terminal chunk; adapters accumulate provider-specific fragments internally.
+    """
 
     delta: str
     finish_reason: str | None = None
     reasoning: str = ""
+    tool_calls: list[ToolCallPart] = Field(default_factory=list)
     provider_data: dict[str, Any] = Field(default_factory=dict)
 
 

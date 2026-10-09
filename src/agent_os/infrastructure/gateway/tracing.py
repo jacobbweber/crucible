@@ -6,7 +6,7 @@ from agent_os.domain.gateway import CompletionRequest, StreamChunk
 from agent_os.infrastructure.gateway.base import BaseModelAdapter
 
 TraceSink = Callable[[str, str], None]
-"""Callable receiving (event_kind, text). Kinds: request, reasoning, delta, end."""
+"""Callable receiving (event_kind, text). Kinds: request, reasoning, delta, tool_call, end."""
 
 
 class TracingModelAdapter(BaseModelAdapter):
@@ -20,6 +20,11 @@ class TracingModelAdapter(BaseModelAdapter):
 
     def _render_request(self, request: CompletionRequest) -> str:
         lines = [f"model={request.model or 'default'} temp={request.temperature}"]
+        if request.tools:
+            names = ", ".join(t.name for t in request.tools)
+            lines.append(f"tools=[{names}] tool_choice={request.tool_choice}")
+        if request.response_schema is not None:
+            lines.append(f"response_schema={request.response_schema.name}")
         for msg in request.messages:
             lines.append(f"[{msg.role}{':' + msg.name if msg.name else ''}]\n{msg.content}")
         return "\n".join(lines)
@@ -36,6 +41,8 @@ class TracingModelAdapter(BaseModelAdapter):
                     self.sink("reasoning", chunk.reasoning)
                 if chunk.delta:
                     self.sink("delta", chunk.delta)
+                for call in chunk.tool_calls:
+                    self.sink("tool_call", f"{call.name}({call.arguments})")
             finish = chunk.finish_reason or finish
             yield chunk
         if self.enabled:
