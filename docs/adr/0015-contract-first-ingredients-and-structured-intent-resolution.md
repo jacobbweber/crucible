@@ -1,7 +1,7 @@
 # ADR-0015: Contract-First Ingredients & Structured Intent Resolution
 
 > **Date**: 2026-10-09
-> **Status**: Proposed
+> **Status**: Accepted
 > **Deciders**: Human Product Owner, AI Agent
 > **Supersedes**: ADR-0011, ADR-0013, ADR-0014 §3.1; ADR-0012 in part
 
