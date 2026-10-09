@@ -7,7 +7,8 @@ from datetime import UTC, datetime
 from typing import Any
 
 from agent_os.domain.gateway import ChatMessage, CompletionRequest
-from agent_os.domain.tools import ToolDefinition
+from agent_os.domain.policy import ActionTier
+from agent_os.domain.tools import ToolDefinition, ToolParameterSchema
 from agent_os.domain.toolsmith import ToolsmithProposal, ToolsmithSynthesisRequest
 from agent_os.domain.wiki import ProtectedFolder
 from agent_os.infrastructure.gateway.base import BaseModelAdapter
@@ -208,18 +209,65 @@ updated: {now}
         """Lookup proposal by tool name."""
         return self._proposals.get(tool_name)
 
+    def compile_tool_function(
+        self, proposal: ToolsmithProposal
+    ) -> tuple[Any, ToolDefinition]:
+        """Compile a verified tool proposal into an in-process callable and ToolDefinition."""
+        class _HubShim:
+            def tool(self, *args: Any, **kwargs: Any) -> Any:
+                return lambda fn: fn
+
+        namespace: dict[str, Any] = {"hub": _HubShim(), "ActionTier": ActionTier}
+        exec(proposal.code_snippet, namespace)
+        fn = namespace.get(proposal.tool_name)
+        if not callable(fn):
+            raise ValueError(f"Callable '{proposal.tool_name}' not found in compiled code.")
+
+        import inspect
+        sig = inspect.signature(fn)
+        params: list[ToolParameterSchema] = []
+        for p_name, param in sig.parameters.items():
+            req = param.default is inspect.Parameter.empty
+            d_val = None if req else param.default
+            params.append(
+                ToolParameterSchema(
+                    name=p_name,
+                    type_name="string",
+                    description=p_name,
+                    required=req,
+                    default=d_val,
+                )
+            )
+
+        tool_def = ToolDefinition(
+            name=proposal.tool_name,
+            description=proposal.description or f"Synthesized tool: {proposal.tool_name}",
+            action_tier=ActionTier.STATE_CHANGE,
+            parameters=params,
+        )
+        return fn, tool_def
+
     async def activate_proposal(
-        self, proposal: ToolsmithProposal, supervisor: McpClientSupervisor
+        self, proposal: ToolsmithProposal, supervisor: McpClientSupervisor | None = None
     ) -> list[ToolDefinition]:
         """Mount a verified proposal into the live FastMCP Hub."""
         if not proposal.verified:
             raise ValueError(f"Cannot activate unverified tool '{proposal.tool_name}'.")
 
         self.mcp_hub.register_tool_code(proposal.tool_name, proposal.code_snippet)
-        return await self.mcp_hub.reload_hub(supervisor)
+        if supervisor is not None:
+            return await self.mcp_hub.reload_hub(supervisor)
+        _fn, tool_def = self.compile_tool_function(proposal)
+        mcp_def = ToolDefinition(
+            name=f"mcp_hub_{tool_def.name}",
+            description=tool_def.description,
+            action_tier=tool_def.action_tier,
+            parameters=tool_def.parameters,
+        )
+        return [mcp_def, tool_def]
 
     async def activate_proposal_by_name(
-        self, tool_name: str, supervisor: McpClientSupervisor
+        self, tool_name: str, supervisor: McpClientSupervisor | None = None
     ) -> list[ToolDefinition]:
         """Activate a staged proposal by its tool name."""
         proposal = self.get_proposal(tool_name)

@@ -76,16 +76,12 @@ class AgentOSKernel:
         self.wiki_store, self.model_adapter = wiki_store, model_adapter
         self.routine_repo = routine_repo or RoutineRepository(session_repo.db_path)
         self.telemetry_repo = telemetry_repo or TelemetryRepository(session_repo.db_path.parent / "telemetry.db")
-        self.rca_stager = RcaProposalStager(wiki_store=wiki_store)
-        self.collector = TelemetryCollector(self.telemetry_repo)
-        self.signaler = CompletionSignaler()
-
-        # Core subsystems
+        self.rca_stager, self.collector, self.signaler = RcaProposalStager(wiki_store=wiki_store), TelemetryCollector(self.telemetry_repo), CompletionSignaler()
         self.semaphore = semaphore or InferenceSemaphore(max_concurrency=config.max_concurrency)
         self.policy_gate = ToolPolicyGate(approval_mode=ApprovalMode(config.approval_mode))
         self.credential_proxy = CredentialProxyGate(vault_repo=vault_repo)
-        self.wiki_tools = WikiToolSuite(wiki_store=wiki_store)
         self.srs_engine = SRSEngine()
+        self.wiki_tools = WikiToolSuite(wiki_store=wiki_store)
         self.education_tools = EducationToolSuite(education_repo=education_repo, srs_engine=self.srs_engine)
         self.session_tools = SessionToolSuite(session_repo=session_repo)
         self.telemetry_tools = TelemetryToolSuite(
@@ -93,72 +89,51 @@ class AgentOSKernel:
         )
         ws_root = session_repo.db_path.parent / "workspace"
         ws_cfg = WorkspaceConfig(root_dir=ws_root)
-        self.workspace_manager = WorkspaceManager(ws_cfg)
-        self.workspace_runner = SandboxedCommandRunner(ws_cfg)
+        self.workspace_manager, self.workspace_runner = WorkspaceManager(ws_cfg), SandboxedCommandRunner(ws_cfg)
         self.workspace_tools = WorkspaceToolSuite(self.workspace_manager, self.workspace_runner)
         self.mcp_supervisor = McpClientSupervisor()
         self.mcp_hub = McpHubManager(ws_root)
-
-        # Tools registration
         self.tools: dict[str, Callable[..., Any]] = {}
         self._tool_tiers: dict[str, ActionTier] = {}
         self._tool_definitions: dict[str, ToolDefinition] = {}
         self.tool_dispatcher: dict[str, Callable[..., Coroutine[Any, Any, ToolExecutionResult]]] = {}
-
         self._register_default_tools()
 
         # Runner & Chamber
         self.runner = NativeRunner(
-            model_adapter=model_adapter,
-            policy_gate=self.policy_gate,
-            tool_dispatcher=self.tool_dispatcher,
+            model_adapter=model_adapter, policy_gate=self.policy_gate, tool_dispatcher=self.tool_dispatcher
         )
         self.chamber = RecipeChamber(
-            runner=self.runner,
-            session_repo=session_repo,
-            tool_tiers=self._tool_tiers,
-            tool_definitions=self._tool_definitions,
+            runner=self.runner, session_repo=session_repo,
+            tool_tiers=self._tool_tiers, tool_definitions=self._tool_definitions,
         )
 
         # Signaling & Dispatch
         self.dispatcher = ZeroCatalogDispatcher(
-            recipe_repo=recipe_repo,
-            recipe_chamber=self.chamber,
-            model_adapter=model_adapter,
+            recipe_repo=recipe_repo, recipe_chamber=self.chamber, model_adapter=model_adapter
         )
         self.capability_scout = CapabilityScout(wiki_store=self.wiki_store, model_adapter=model_adapter)
         self.toolsmith = ToolsmithWorker(
-            workspace_manager=self.workspace_manager,
-            command_runner=self.workspace_runner,
-            mcp_hub=self.mcp_hub,
-            model_adapter=model_adapter,
-            wiki_store=self.wiki_store,
+            workspace_manager=self.workspace_manager, command_runner=self.workspace_runner,
+            mcp_hub=self.mcp_hub, model_adapter=model_adapter, wiki_store=self.wiki_store,
         )
         self.assembly_pipeline = JobAssemblyPipeline(
-            dispatcher=self.dispatcher,
-            signaler=self.signaler,
-            recipe_repo=recipe_repo,
-            capability_scout=self.capability_scout,
-            toolsmith=self.toolsmith,
+            dispatcher=self.dispatcher, signaler=self.signaler, recipe_repo=recipe_repo,
+            capability_scout=self.capability_scout, toolsmith=self.toolsmith,
             on_activate_tool=self.activate_tool_proposal,
         )
 
         # Scheduler with completion signaling and persistence (H6)
         signaling_sched_dispatcher = SchedulerSignalingDispatcher(
-            dispatcher=self.dispatcher,
-            signaler=self.signaler,
-            session_repo=self.session_repo,
-            tools=self.tools,
+            dispatcher=self.dispatcher, signaler=self.signaler,
+            session_repo=self.session_repo, tools=self.tools,
         )
         self.scheduler = EmbeddedSchedulerDaemon(
             dispatcher=signaling_sched_dispatcher,  # type: ignore[arg-type]
-            semaphore=self.semaphore,
-            routine_repo=self.routine_repo,
+            semaphore=self.semaphore, routine_repo=self.routine_repo,
         )
         ensure_default_routines(self.routine_repo)
         ensure_default_recipes(self.recipe_repo)
-
-        # Fact prefetcher
         self.fact_prefetcher = FactPrefetcher(facts_repo=facts_repo)
 
     def _register_default_tools(self) -> None:
@@ -196,10 +171,25 @@ class AgentOSKernel:
         return tools
 
     async def activate_tool_proposal(self, tool_name: str) -> list[ToolDefinition]:
-        """Activate a staged tool proposal into the FastMCP Hub and register tools live."""
-        tools = await self.toolsmith.activate_proposal_by_name(tool_name, self.mcp_supervisor)
-        self._register_mcp_tools(tools)
-        return tools
+        """Activate a staged tool proposal directly into kernel runtime and FastMCP Hub."""
+        proposal = self.toolsmith.get_proposal(tool_name)
+        if not proposal:
+            raise ValueError(f"No proposal found for tool '{tool_name}'")
+        fn, tool_def = self.toolsmith.compile_tool_function(proposal)
+        self.mcp_hub.register_tool_code(proposal.tool_name, proposal.code_snippet)
+
+        async def _invoker(**kw: Any) -> ToolExecutionResult:
+            try:
+                res = fn(**kw)
+                if inspect.iscoroutine(res):
+                    res = await res
+                return ToolExecutionResult(tool_name=tool_name, success=True, output=str(res))
+            except Exception as e:
+                return ToolExecutionResult(tool_name=tool_name, success=False, output="", error=str(e))
+
+        self.register_tool(tool_def.name, _invoker, tool_def.action_tier, definition=tool_def)
+        self.register_tool(f"mcp_hub_{tool_def.name}", _invoker, tool_def.action_tier, definition=tool_def)
+        return [tool_def]
 
     async def execute_tool(
         self, tool_name: str, parameters: dict[str, Any] | None = None
@@ -251,7 +241,6 @@ class AgentOSKernel:
         ):
             yield event
 
-
     async def handle_user_turn(self, request: UserTurnRequest) -> TurnResponse:
         """Handle an interactive user turn with prefetching, background drain, and streaming."""
         facts_payload = self.fact_prefetcher.prefetch_for_turn(request.user_input)
@@ -279,11 +268,8 @@ class AgentOSKernel:
         )
 
     async def execute_job(
-        self,
-        session_id: str,
-        task: str,
-        on_status: Callable[[str], Any] | None = None,
-        context_payload: str = "",
+        self, session_id: str, task: str,
+        on_status: Callable[[str], Any] | None = None, context_payload: str = "",
     ) -> PipelineExecutionResult:
         """Dispatch background task execution through dynamic job assembly line."""
         req = JobAssemblyRequest(
