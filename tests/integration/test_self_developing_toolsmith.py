@@ -6,7 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from agent_os.domain.gateway import CompletionRequest, StreamChunk
+from agent_os.domain.gateway import CompletionRequest, StreamChunk, ToolCallPart
+from agent_os.domain.ingredients.intent import TaskIntent
+from agent_os.domain.ingredients.vocabulary import Scope, Verb
 from agent_os.domain.kernel import KernelConfig, UserTurnRequest
 from agent_os.domain.tools import ToolDefinition, ToolExecutionResult
 from agent_os.infrastructure.gateway.base import BaseModelAdapter
@@ -85,13 +87,29 @@ class MockToolsmithModelAdapter(BaseModelAdapter):
                     "parameters": {"path": str(self.target_file_path), "content": "hello world"},
                 }
             )
-        # 5. Front-door companion turn: emit dispatch directive
+        # 5. Front-door companion turn: emit fulfill_request tool call
         elif "Can you create me a file named" in content:
-            resp = (
-                "<think>This requires host file system access.</think>\n\n"
-                f"[DISPATCH: Create file at {self.target_file_path} and write hello world into it.]\n\n"
-                "I have dispatched a directive to create the file."
+            intent = TaskIntent(
+                verb=Verb.WRITE,
+                resource="filesystem.file",
+                scope=Scope.HOST,
+                parameters={"path": str(self.target_file_path), "content": "hello world"},
+                desired_output="file created",
+                normalized_utterance=f"Create file at {self.target_file_path} and write hello world into it.",
             )
+            yield StreamChunk(
+                delta="I have dispatched a directive to create the file.",
+                reasoning="This requires host file system access.",
+                finish_reason="tool_calls",
+                tool_calls=[
+                    ToolCallPart(
+                        id="call_synth",
+                        name="fulfill_request",
+                        arguments=intent.model_dump_json(),
+                    )
+                ],
+            )
+            return
         else:
             resp = f"Successfully wrote hello world to {self.target_file_path}."
 

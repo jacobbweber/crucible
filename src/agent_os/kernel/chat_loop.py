@@ -9,21 +9,32 @@ from typing import Any
 
 from agent_os.domain.companion import CompanionConfig
 from agent_os.domain.continuum import ChatSessionState, StreamTurnEvent
-from agent_os.domain.gateway import ChatMessage, CompletionRequest, estimate_tokens
+from agent_os.domain.gateway import (
+    ChatMessage,
+    CompletionRequest,
+    ToolCallPart,
+    ToolSpec,
+    estimate_tokens,
+)
+from agent_os.domain.ingredients.vocabulary import ResourceVocabularyRegistry
 from agent_os.domain.session import TurnRecord
 from agent_os.infrastructure.gateway.base import BaseModelAdapter
 from agent_os.infrastructure.storage.session_repo import SessionRepository
+from agent_os.kernel.companion_front_door import (
+    build_fulfill_request_tool_spec,
+    parse_task_intent,
+)
 from agent_os.kernel.prompt_assembler import PromptAssembler
 
 
 def extract_dispatch_directives(text: str) -> list[str]:
-    """Extract [DISPATCH: <task>] directives from companion response."""
+    """Legacy utility: extract [DISPATCH: <task>] directives from text."""
     matches = re.findall(r"\[DISPATCH:\s*(.+?)\]", text, flags=re.DOTALL | re.IGNORECASE)
     return [m.strip() for m in matches if m.strip()]
 
 
 def extract_tool_directives(text: str) -> list[tuple[str, dict[str, Any]]]:
-    """Extract [TOOL: <name> <json_params>] directives, balancing JSON brackets/braces."""
+    """Legacy utility: extract [TOOL: <name> <json_params>] directives from text."""
     results: list[tuple[str, dict[str, Any]]] = []
     pattern = re.compile(r"\[TOOL:\s*([a-zA-Z0-9_\-]+)", re.IGNORECASE)
     for m in pattern.finditer(text):
@@ -77,6 +88,8 @@ class CompanionChatLoop:
         tool_dispatcher: (
             Callable[[str, dict[str, Any] | None], Coroutine[Any, Any, Any]] | None
         ) = None,
+        vocabulary: ResourceVocabularyRegistry | None = None,
+        tools: list[ToolSpec] | None = None,
     ) -> None:
         self.session_id = session_id
         self.session_repo = session_repo
@@ -91,6 +104,11 @@ class CompanionChatLoop:
         self.job_dispatcher = job_dispatcher
         self.tool_dispatcher = tool_dispatcher
         self.assembler = PromptAssembler(config)
+        self.vocabulary = vocabulary
+        if tools is not None:
+            self.tools = list(tools)
+        else:
+            self.tools = [build_fulfill_request_tool_spec(vocabulary)]
 
     def get_state(self) -> ChatSessionState:
         """Retrieve current session state with recent sliding window turns."""
@@ -175,10 +193,13 @@ class CompanionChatLoop:
                 messages=messages,
                 max_tokens=self.reserve_output_tokens,
                 stream=True,
+                tools=self.tools,
+                tool_choice="auto",
             )
 
             accumulated_text_parts: list[str] = []
             accumulated_reasoning_parts: list[str] = []
+            terminal_tool_calls: list[ToolCallPart] = []
             async for chunk in self.model_adapter.complete(request):
                 if chunk.reasoning:
                     accumulated_reasoning_parts.append(chunk.reasoning)
@@ -194,12 +215,15 @@ class CompanionChatLoop:
                         delta=chunk.delta,
                         finish_reason=chunk.finish_reason,
                     )
+                if chunk.tool_calls:
+                    terminal_tool_calls.extend(chunk.tool_calls)
 
             accumulated_text = "".join(accumulated_text_parts)
             completion_summaries: list[str] = []
 
-            if self.job_dispatcher:
-                tasks = extract_dispatch_directives(accumulated_text)
+            # 1. Native fulfill_request tool calls -> job_dispatcher
+            fulfill_calls = [c for c in terminal_tool_calls if c.name == "fulfill_request"]
+            if fulfill_calls and self.job_dispatcher:
                 recent_turns = self.session_repo.get_recent_turns(self.session_id, limit=4)
                 turn_parts = [
                     f"[{t.role.upper()}]:\n{t.content.strip()}"
@@ -209,7 +233,16 @@ class CompanionChatLoop:
                 turn_parts.append(f"[USER]:\n{user_input.strip()}")
                 ctx_payload = "\n\n".join(turn_parts)
 
-                for task in tasks:
+                for call in fulfill_calls:
+                    try:
+                        intent = parse_task_intent(call)
+                    except Exception as exc:
+                        yield StreamTurnEvent(
+                            event_type="error",
+                            error_message=f"Invalid task intent arguments: {exc}",
+                        )
+                        continue
+
                     try:
                         q: asyncio.Queue[str] = asyncio.Queue()
                         seen_status: set[str] = set()
@@ -222,8 +255,13 @@ class CompanionChatLoop:
                             kwargs["on_status"] = q.put_nowait
                         if var_kw or "context_payload" in sig.parameters:
                             kwargs["context_payload"] = ctx_payload
+                        if var_kw or "intent" in sig.parameters:
+                            kwargs["intent"] = intent
+
                         fut = asyncio.create_task(
-                            self.job_dispatcher(self.session_id, task, **kwargs)
+                            self.job_dispatcher(
+                                self.session_id, intent.normalized_utterance, **kwargs
+                            )
                         )
 
                         while not fut.done():
@@ -258,11 +296,16 @@ class CompanionChatLoop:
                             event_type="error", error_message=f"Job dispatch error: {exc}"
                         )
 
-            if self.tool_dispatcher:
-                tools = extract_tool_directives(accumulated_text)
-                for tool_name, params in tools:
+            # 2. Direct tool calls -> tool_dispatcher
+            direct_calls = [c for c in terminal_tool_calls if c.name != "fulfill_request"]
+            if direct_calls and self.tool_dispatcher:
+                for call in direct_calls:
                     try:
-                        tool_res = await self.tool_dispatcher(tool_name, params)
+                        params = json.loads(call.arguments) if call.arguments else {}
+                    except Exception:
+                        params = {}
+                    try:
+                        tool_res = await self.tool_dispatcher(call.name, params)
                         yield StreamTurnEvent(
                             event_type="tool_executed",
                             tool_result=tool_res,
@@ -272,7 +315,6 @@ class CompanionChatLoop:
                             event_type="error",
                             error_message=f"Tool execution error: {exc}",
                         )
-
             final_content = accumulated_text
             if completion_summaries:
                 final_content += "\n\n" + "\n\n".join(completion_summaries)

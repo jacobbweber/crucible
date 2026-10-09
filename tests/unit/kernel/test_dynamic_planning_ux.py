@@ -7,7 +7,9 @@ import pytest
 
 from agent_os.domain.companion import CompanionConfig
 from agent_os.domain.dispatch import DispatchDecision, DispatchResult
-from agent_os.domain.gateway import CompletionRequest, StreamChunk
+from agent_os.domain.gateway import CompletionRequest, StreamChunk, ToolCallPart
+from agent_os.domain.ingredients.intent import TaskIntent
+from agent_os.domain.ingredients.vocabulary import Scope, Verb
 from agent_os.domain.ipc import SubJobReturnEnvelope
 from agent_os.domain.pipeline import JobAssemblyRequest
 from agent_os.domain.session import SessionRecord, TurnRecord
@@ -53,7 +55,26 @@ def mock_dispatcher() -> MagicMock:
 
 class DummyModelAdapter(BaseModelAdapter):
     async def complete(self, request: CompletionRequest) -> AsyncIterator[StreamChunk]:
-        yield StreamChunk(delta="I will handle this. [DISPATCH: deploy microservice]")
+        intent = TaskIntent(
+            verb=Verb.EXECUTE,
+            resource="workspace.command",
+            scope=Scope.WORKSPACE,
+            parameters={"task": "deploy microservice"},
+            desired_output="deployed service",
+            normalized_utterance="deploy microservice",
+        )
+        yield StreamChunk(delta="I will handle this. ", finish_reason=None)
+        yield StreamChunk(
+            delta="",
+            finish_reason="tool_calls",
+            tool_calls=[
+                ToolCallPart(
+                    id="call_deploy",
+                    name="fulfill_request",
+                    arguments=intent.model_dump_json(),
+                )
+            ],
+        )
 
 
 @pytest.mark.asyncio

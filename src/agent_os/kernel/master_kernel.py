@@ -6,6 +6,8 @@ from typing import Any
 
 from agent_os.domain.companion import CompanionConfig
 from agent_os.domain.continuum import StreamTurnEvent
+from agent_os.domain.ingredients.intent import TaskIntent
+from agent_os.domain.ingredients.vocabulary import ResourceVocabularyRegistry
 from agent_os.domain.kernel import KernelConfig, TurnResponse, UserTurnRequest
 from agent_os.domain.pipeline import JobAssemblyRequest, PipelineExecutionResult
 from agent_os.domain.policy import ActionTier, ApprovalMode, PolicyDecisionType, ToolCallRequest
@@ -70,6 +72,7 @@ class AgentOSKernel:
         semaphore: InferenceSemaphore | None = None,
         routine_repo: RoutineRepository | None = None,
         telemetry_repo: TelemetryRepository | None = None,
+        vocabulary_registry: ResourceVocabularyRegistry | None = None,
     ) -> None:
         self.config, self.session_repo, self.facts_repo = config, session_repo, facts_repo
         self.recipe_repo, self.education_repo, self.vault_repo = (
@@ -81,6 +84,9 @@ class AgentOSKernel:
         self.routine_repo = routine_repo or RoutineRepository(session_repo.db_path)
         self.telemetry_repo = telemetry_repo or TelemetryRepository(
             session_repo.db_path.parent / "telemetry.db"
+        )
+        self.vocabulary_registry = (
+            vocabulary_registry or ResourceVocabularyRegistry.default_registry()
         )
         self.rca_stager, self.collector, self.signaler = (
             RcaProposalStager(wiki_store=wiki_store),
@@ -310,6 +316,7 @@ class AgentOSKernel:
             reserve_output_tokens=self.config.reserve_output_tokens,
             job_dispatcher=self.execute_job,
             tool_dispatcher=self.execute_tool,
+            vocabulary=self.vocabulary_registry,
         )
         async for event in chat_loop.execute_turn(
             user_input=request.user_input,
@@ -366,6 +373,7 @@ class AgentOSKernel:
         task: str,
         on_status: Callable[[str], Any] | None = None,
         context_payload: str = "",
+        intent: TaskIntent | None = None,
     ) -> PipelineExecutionResult:
         """Dispatch background task execution through dynamic job assembly line."""
         async with self.collector.trace_operation(
@@ -379,6 +387,7 @@ class AgentOSKernel:
                 task=task,
                 available_tools=list(self.tools.keys()),
                 context_payload=context_payload,
+                intent=intent,
             )
             res = await self.assembly_pipeline.run_pipeline(req, on_status=on_status)
             if not res.success:

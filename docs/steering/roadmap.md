@@ -46,7 +46,7 @@ Per `.agents/rules/live-testing.md`, every live test and smoke verification must
 | 19 | **Ingredient Contracts & Vocabulary** | Typed contracts, capability signatures, vocabulary registry | Invalid contracts rejected on write; 8 crafting rules enforced; built-in suites declared; 280 tests pass | H14, R1 | ✅ Complete |
 | 20 | **Ingredient Store & Capability Index** | `ingredients.db`, versioned rows, in-process `EmbeddingProvider` (bge-small ONNX) + recall-only vector index | Seeded recipes migrated; rebuildable vector index; 288 tests pass | R1 | ✅ Complete |
 | 21 | **Intent Resolver** | Intent → Retrieve → Bind → Adjudicate | Paraphrased requests resolve to same recipe; parameters schema-bound; 295 tests pass | R1 | ✅ Complete |
-| 22 | **Companion Front Door** | `fulfill_request` native tool call | `[DISPATCH:]`/`[TOOL:]` regex removed; conversational turns never dispatch | R2 | ⏳ Planned |
+| 22 | **Companion Front Door** | `fulfill_request` native tool call | `[DISPATCH:]`/`[TOOL:]` regex removed; conversational turns never dispatch; 301 tests pass | R2, G7 | ✅ Complete |
 | 23 | **Contract-First Toolsmith & Sandboxed Hub** | Contract → implement → contract tests; out-of-process execution | Synthesized code never `exec`'d in kernel; mounting honors approval mode | R4, R5 | ⏳ Planned |
 | 24 | **Telemetry Fix & Lifecycle Promotion** | Tool-level journey steps; draft → candidate → active | Candidate promoted after verified runs on distinct inputs | R3 | ⏳ Planned |
 | 25 | **Nightly Curator Routine** | Signature clustering, contract regression, demotion, merge | Repeated ephemeral jobs proposed as candidates; failing tools demoted with RCA | R3 | ⏳ Planned |
@@ -78,7 +78,7 @@ Severity: 🔴 Critical · 🟠 High · 🟡 Medium · ⚪ Low
 | **H13** | 🟠 | Telemetry | Telemetry database initialized but live runtime turns and pipelines uninstrumented. | ✅ Fixed (Phase 16) |
 | **H14** | 🟠 | Autonomy | System cannot inspect, refactor, or retire its own recipe ingredients or broken tools. | ⚠️ Partial — tool inspect/refactor/retire exist; ingredient contracts do not (Phase 19) |
 | **R1** | 🔴 | Dispatch | Recipe matching, gap detection, and tool selection rely on hardcoded keyword sets, regexes, and recipe-id string checks (`recipe_triage.py`, `capability_scout.identify_missing_domain`, pipeline filesystem branches, chamber/dispatcher tool injection). | ⏳ Open (Phases 19–21) |
-| **R2** | 🔴 | Gateway | No structured model I/O: `CompletionRequest` lacks `tools`/`response_format`; all decisions parse JSON or `[DISPATCH:]` directives out of prose. | 🟡 Gateway channel fixed (Phase 18); callers migrate in Phases 21–22 |
+| **R2** | 🔴 | Gateway | No structured model I/O: `CompletionRequest` lacks `tools`/`response_format`; all decisions parse JSON or `[DISPATCH:]` directives out of prose. | ✅ Fixed (Phases 18, 22) — Companion front door uses native `fulfill_request` tool call; prose regex directives removed |
 | **R3** | 🟠 | Telemetry | Journey steps store `step_type` as `node_name`, so Pattern Scout and Recipe Promoter cluster on thought/tool_call markers instead of tool identities. | ⏳ Open (Phase 24) |
 | **R4** | 🔴 | Security | Synthesized tool code is `exec`'d inside the kernel process after a subprocess dry run, and auto-mounted mid-pipeline. | ⏳ Open (Phase 23) |
 | **R5** | 🟠 | Policy | Approval mode is fixed at boot, governs only execution (not mounting/promotion), and cannot be changed at runtime. | ⏳ Open (Phase 23) |
@@ -86,7 +86,7 @@ Severity: 🔴 Critical · 🟠 High · 🟡 Medium · ⚪ Low
 | **G4** | 🟠 | Gateway | Both targets ignore `$ref`/`$defs` in tool schemas and double-encode nested objects as JSON strings. | ✅ Fixed (Phase 18) — model-facing schemas are inlined (`inline_refs`) |
 | **G5** | 🟡 | Gateway | vLLM streams tool-call arguments as index-keyed fragments; Ollama emits whole calls. | ✅ Fixed (Phase 18) — `ToolCallAccumulator` emits assembled calls on the terminal chunk |
 | **G6** | 🟡 | Gateway | `tool_choice: "required"` produces duplicate calls on the vLLM target; tool use without a system prompt is inconsistent. | ✅ Addressed — `required` unsupported; use `auto` or a named tool with a system prompt |
-| **G7** | 🟠 | Intent | Context-free schema extraction misclassifies "folders on my M drive" as `filesystem.file` 3/3 on both targets; the companion tool-call path classifies 9/9 correctly. | ⏳ Open (Phases 19/21) — extract intent via companion `fulfill_request`; per-value vocabulary descriptions; dual retrieval + bind gate |
+| **G7** | 🟠 | Intent | Context-free schema extraction misclassifies "folders on my M drive" as `filesystem.file` 3/3 on both targets; the companion tool-call path classifies 9/9 correctly. | ✅ Fixed (Phases 19–22) — extract intent via companion `fulfill_request`; per-value vocabulary descriptions in self-contained schema |
 | **M1** | 🟡 | Layering | Raw SQL executed from kernel signaling dispatcher. | ✅ Fixed (Phase 5) |
 | **M2** | 🟡 | Chat | Foreign key violations on unknown session swallowed silently. | ✅ Fixed (Phase 5) |
 | **M3** | 🟡 | Education | Education datetime parsing and pedagogical advancement unwired. | ✅ Fixed (Phase 9) |

@@ -6,6 +6,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from agent_os.domain.dispatch import DispatchResult
+from agent_os.domain.ingredients.intent import TaskIntent
 
 
 class CapabilityGapReport(BaseModel):
@@ -26,6 +27,7 @@ class JobAssemblyRequest(BaseModel):
     available_tools: list[str] = Field(default_factory=list)
     timeout_seconds: int = Field(default=300, ge=10)
     context_payload: str = ""
+    intent: TaskIntent | None = None
 
 
 class PipelineExecutionResult(BaseModel):

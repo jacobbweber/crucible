@@ -2,10 +2,13 @@
 
 from collections.abc import AsyncIterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 
-from agent_os.domain.gateway import CompletionRequest, StreamChunk
+from agent_os.domain.gateway import CompletionRequest, StreamChunk, ToolCallPart
+from agent_os.domain.ingredients.intent import TaskIntent
+from agent_os.domain.ingredients.vocabulary import Scope, Verb
 from agent_os.domain.kernel import KernelConfig, UserTurnRequest
 from agent_os.domain.recipe import RecipeMetadata, RecipeRecord
 from agent_os.domain.wiki import NoteFrontmatter
@@ -23,7 +26,7 @@ from agent_os.kernel.master_kernel import AgentOSKernel
 class MockMultiTurnModelAdapter(BaseModelAdapter):
     """Model adapter returning sequentially scheduled responses for front-door and worker."""
 
-    def __init__(self, responses: list[str]) -> None:
+    def __init__(self, responses: list[Any]) -> None:
         self.responses = responses
         self.requests: list[CompletionRequest] = []
         self.call_count = 0
@@ -38,7 +41,14 @@ class MockMultiTurnModelAdapter(BaseModelAdapter):
             self.call_count += 1
         else:
             resp = "Default response"
-        yield StreamChunk(delta=resp, finish_reason="stop")
+
+        if isinstance(resp, StreamChunk):
+            yield resp
+        elif isinstance(resp, tuple):
+            text, calls = resp
+            yield StreamChunk(delta=text, tool_calls=calls, finish_reason="stop")
+        else:
+            yield StreamChunk(delta=resp, finish_reason="stop")
 
 
 def _build_kernel(tmp_path: Path, adapter: BaseModelAdapter) -> AgentOSKernel:
@@ -100,8 +110,26 @@ async def test_end_to_end_conversational_job_dispatch(tmp_path: Path) -> None:
     # 1. Front-door companion turn 1: emits [DISPATCH: summarize wiki notes]
     # 2. Worker ReAct step in Recipe Chamber: completes task
     # 3. Front-door companion turn 2: companion receives background completion in prompt
+    intent1 = TaskIntent(
+        verb=Verb.SEARCH,
+        resource="vault.note",
+        scope=Scope.VAULT,
+        parameters={"query": "wiki notes"},
+        desired_output="note summary",
+        normalized_utterance="summarize wiki notes",
+    )
     responses = [
-        "I will summarize the notes for you.\n[DISPATCH: summarize wiki notes]",
+        StreamChunk(
+            delta="I will summarize the notes for you.",
+            finish_reason="tool_calls",
+            tool_calls=[
+                ToolCallPart(
+                    id="call_summary",
+                    name="fulfill_request",
+                    arguments=intent1.model_dump_json(),
+                )
+            ],
+        ),
         (
             "```json\n"
             "{\n"
@@ -149,11 +177,29 @@ async def test_end_to_end_conversational_job_dispatch(tmp_path: Path) -> None:
 @pytest.mark.asyncio
 async def test_end_to_end_warehouse_capture_with_context_handoff(tmp_path: Path) -> None:
     """Verify turn context is handed off to worker, warehouse_write is used, and file saved."""
+    intent2 = TaskIntent(
+        verb=Verb.CAPTURE,
+        resource="vault.note",
+        scope=Scope.VAULT,
+        parameters={"title": "Docker Services Overview"},
+        desired_output="saved warehouse note",
+        normalized_utterance="Save running container overview note to warehouse",
+    )
     responses = [
         # Turn 1: Companion explains Docker containers
         "Here is your fleet: 1 container running postgres:15 on port 5432.",
-        # Turn 2 Companion: Emits [DISPATCH]
-        "I will save that to our warehouse for you.\n[DISPATCH: Save running container overview note to warehouse]",
+        # Turn 2 Companion: Emits fulfill_request tool call
+        StreamChunk(
+            delta="I will save that to our warehouse for you.",
+            finish_reason="tool_calls",
+            tool_calls=[
+                ToolCallPart(
+                    id="call_warehouse",
+                    name="fulfill_request",
+                    arguments=intent2.model_dump_json(),
+                )
+            ],
+        ),
         # Worker ReAct step 1: calls warehouse_write
         (
             "```json\n"

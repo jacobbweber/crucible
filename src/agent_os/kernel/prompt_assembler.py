@@ -62,19 +62,21 @@ class PromptAssembler:
         )
         sections.append(core_boundaries)
 
-        dispatch_instructions = (
+        operational_instructions = (
             "Operational & Background Execution:\n"
-            "- Heavy actions (reading/writing wiki notes, flashcards, automated recipes) run in "
-            "isolated sandboxes.\n"
-            "- When the user requests an operational task, system inspection, or capability "
-            "(e.g., inspecting Docker containers, external services, system operations), "
-            "DO NOT decline with 'I cannot do this'.\n"
-            "- Instead, immediately dispatch the directive:\n"
-            "[DISPATCH: <task description>]\n"
-            "The Recipe Chamber will evaluate the request, check for capability gaps or MCP, "
-            "execute or stage an MCP capability proposal in 00_Inbox, and report back."
+            "- Heavy actions (reading/writing wiki notes, flashcards, automated recipes, system "
+            "operations) run in isolated background sandboxes.\n"
+            "- When the user requests an operational task, system inspection, file/directory "
+            "action, wiki note capture, or execution (e.g., inspecting Docker containers, listing "
+            "files, searching notes, running health audits), call the 'fulfill_request' tool "
+            "with the structured intent.\n"
+            "- DO NOT decline with 'I cannot do this' or claim lack of capability when an "
+            "operational task is requested.\n"
+            "- For normal conversation, chit-chat, greetings, questions answered from conversation "
+            "history, or clarifications, respond directly with conversational text and DO NOT "
+            "call 'fulfill_request'."
         )
-        sections.append(dispatch_instructions)
+        sections.append(operational_instructions)
 
         rendered_prompt = "\n\n".join(sections)
         token_estimate = estimate_tokens(rendered_prompt)
