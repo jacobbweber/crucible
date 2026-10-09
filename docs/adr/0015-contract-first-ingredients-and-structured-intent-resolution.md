@@ -24,7 +24,7 @@ The current implementation can't support this reliably:
 
 * **Long-term reliability over short-term ease.** Lookup must survive paraphrase, new domains, and catalog growth without code edits.
 * **No keyword or regex decision paths.** Every routing decision goes through typed structures.
-* **Local-first.** All models (chat, embedding) run on local endpoints. All indexes live in SQLite.
+* **Local-first.** Chat models run on local endpoints; the embedding model runs in-process on CPU. All indexes live in SQLite.
 * **Evidence before trust.** Nothing becomes reusable without passing validation and verified runs.
 * **User-controlled autonomy**, adjustable at runtime and later from a settings UI.
 
@@ -78,7 +78,9 @@ All ingredients share an envelope: `id`, `version`, `kind`, `status`, `provenanc
 4. **Adjudicate.** With 0 viable candidates, go to composition. With 1, execute. With 2–3, the model picks one or `none` via an enum-constrained response.
 5. **Verify.** Outputs are validated against `recipe.outputs` and `acceptance` (deterministic checks first, rubric judge as fallback). The outcome is recorded against `recipe@version` with the intent signature.
 
-**Embeddings** come from a local OpenAI-compatible `/v1/embeddings` endpoint (`AGENT_OS_EMBED_MODEL`). They are a **derived, rebuildable index** stored in `ingredients.db` and searched brute-force, since catalog size doesn't justify a vector DB. Each verified run appends its normalized utterance to the recipe's `intent_examples` (capped and deduplicated), so recall improves with use.
+**Embeddings** are produced **in-process on CPU** behind an `EmbeddingProvider` port. The default is ONNX `bge-small-en-v1.5` (via fastembed): 67 MB, ~210 MB RSS, ~2.6 ms per query. A local `/v1/embeddings` endpoint is an optional adapter. Running in-process keeps one consistent index regardless of chat target and works offline. Weights are fetched once by a setup command into `<data_dir>`, pinned by hash. Vectors are a **derived, rebuildable index** in `ingredients.db`, stored with `(model_id, dim, content_hash)`; changing the model triggers a rebuild. Search is brute-force cosine, since catalog size doesn't justify a vector DB. Each verified run appends its normalized utterance to the recipe's `intent_examples` (capped and deduplicated), so recall improves with use.
+
+**Embeddings are recall-only and never decide.** In a spike (12 recipes, 36 paraphrases, 7 models), the best model scored top-1 78% and top-3 89–94%. In every model, chitchat similarity overlapped correct-match similarity (bge-small: chitchat max 0.75 > correct min 0.57), so no similarity threshold is viable. Nearly all misses confused operations on the same resource (list vs. read vs. delete), which is exactly what the structured signature disambiguates. Larger models (bge-base, nomic) did not improve top-1. Embeddings therefore contribute only top-k candidates (k=5) to the fusion; the signature, bind gate, and adjudication decide.
 
 ### 4.5 Lifecycle
 `draft` → `candidate` → `active` → `deprecated` → `retired`.
@@ -107,7 +109,7 @@ Settings are stored in `<data_dir>/settings.db` as typed key/value rows (precede
 * The user controls autonomy live, ready for a settings UI.
 
 ### Negative Consequences / Trade-offs
-* Requires a local embedding model on each target and live verification of constrained decoding on both.
+* Adds an ONNX runtime dependency (~67 MB model, ~210 MB RSS when loaded) and a one-time model fetch. Constrained decoding must be live-verified on every target.
 * Migration cost: built-in tool suites must declare signatures, schemas, and examples. `recipes.db` is replaced by `ingredients.db`.
 * Out-of-process hub execution adds per-call latency over in-process calls (accepted for R4).
 * The controlled vocabulary needs curation discipline to avoid sprawl.
