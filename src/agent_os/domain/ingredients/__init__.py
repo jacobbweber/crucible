@@ -17,6 +17,8 @@ from agent_os.domain.ingredients.contracts import (
     ToolContract,
     ToolRuntime,
 )
+from agent_os.domain.ingredients.default_recipes import get_default_recipe_contracts
+from agent_os.domain.ingredients.embedding import EmbeddingProvider, SemanticMatch
 from agent_os.domain.ingredients.envelope import (
     IngredientEnvelope,
     IngredientKind,
@@ -34,7 +36,9 @@ from agent_os.domain.ingredients.rules import (
     validate_schema_structure,
     validate_tool_contract,
 )
+from agent_os.domain.ingredients.seeding import seed_default_ingredients
 from agent_os.domain.ingredients.signature import CapabilitySignature
+from agent_os.domain.ingredients.store import IngredientRepository
 from agent_os.domain.ingredients.vocabulary import (
     EFFECT_DESCRIPTIONS,
     SCOPE_DESCRIPTIONS,
@@ -56,8 +60,10 @@ __all__ = [
     "CraftingRuleViolation",
     "EFFECT_DESCRIPTIONS",
     "Effect",
+    "EmbeddingProvider",
     "IngredientEnvelope",
     "IngredientKind",
+    "IngredientRepository",
     "IngredientStatus",
     "ModelProfile",
     "Provenance",
@@ -70,6 +76,7 @@ __all__ = [
     "RunbookStep",
     "SCOPE_DESCRIPTIONS",
     "Scope",
+    "SemanticMatch",
     "TaskIntent",
     "ThinkingLevel",
     "ToolContract",
@@ -79,6 +86,8 @@ __all__ = [
     "canonical_json_bytes",
     "compute_sha256",
     "get_builtin_tool_contracts",
+    "get_default_recipe_contracts",
+    "seed_default_ingredients",
     "validate_canonical_id",
     "validate_effect_alignment",
     "validate_recipe_contract",
