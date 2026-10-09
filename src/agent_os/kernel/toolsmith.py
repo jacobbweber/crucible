@@ -65,7 +65,7 @@ def {tool_name}(query: str = "status") -> str:
             '  "code_snippet": "@hub.tool()\\ndef <name>(...) -> str:\\n    ...",\n'
             '  "dry_run_args": {"<param>": "<sample_val>"}\n'
             "}\n"
-            "2. Ensure the code snippet has typed parameters and returns a string or dict.\n"
+            "2. Ensure the code snippet has generic typed parameters (e.g. `path: str` for filesystem operations, NOT hardcoded drive letters) and a docstring describing them so callers can pass dynamic targets.\n"
             "3. Include all necessary standard library imports inside the function body "
             "(e.g. from pathlib import Path, import os, import subprocess) so the function is completely self-contained.\n"
             "4. Ensure dry_run_args provides safe, valid sample arguments (e.g. for file operations use 'dry_run_test.txt') "
@@ -229,11 +229,12 @@ updated: {now}
         for p_name, param in sig.parameters.items():
             req = param.default is inspect.Parameter.empty
             d_val = None if req else param.default
+            p_desc = f"Target {p_name} parameter (e.g. drive letter or path)" if "path" in p_name else p_name
             params.append(
                 ToolParameterSchema(
                     name=p_name,
                     type_name="string",
-                    description=p_name,
+                    description=p_desc,
                     required=req,
                     default=d_val,
                 )

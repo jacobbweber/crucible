@@ -142,10 +142,9 @@ class AgentOSKernel:
             for defn in s.get_definitions():
                 if fn := getattr(s, defn.name, None):
                     self.register_tool(defn.name, fn, defn.action_tier, definition=defn)
-        for name, (fn, desc) in self.mcp_hub.load_persisted_tools().items():
-            defn = ToolDefinition(name=name, description=desc, action_tier=ActionTier.STATE_CHANGE)
-            self.register_tool(name, fn, ActionTier.STATE_CHANGE, definition=defn)
-            self.register_tool(f"mcp_hub_{name}", fn, ActionTier.STATE_CHANGE, definition=defn)
+        for name, (fn, t_def) in self.mcp_hub.load_persisted_tools().items():
+            self.register_tool(name, fn, ActionTier.STATE_CHANGE, definition=t_def)
+            self.register_tool(f"mcp_hub_{name}", fn, ActionTier.STATE_CHANGE, definition=t_def)
 
     def register_tool(
         self, name: str, fn: Callable[..., Any],
@@ -181,18 +180,8 @@ class AgentOSKernel:
             raise ValueError(f"No proposal found for tool '{tool_name}'")
         fn, tool_def = self.toolsmith.compile_tool_function(proposal)
         self.mcp_hub.register_tool_code(proposal.tool_name, proposal.code_snippet)
-
-        async def _invoker(**kw: Any) -> ToolExecutionResult:
-            try:
-                res = fn(**kw)
-                if inspect.iscoroutine(res):
-                    res = await res
-                return ToolExecutionResult(tool_name=tool_name, success=True, output=str(res))
-            except Exception as e:
-                return ToolExecutionResult(tool_name=tool_name, success=False, output="", error=str(e))
-
-        self.register_tool(tool_def.name, _invoker, tool_def.action_tier, definition=tool_def)
-        self.register_tool(f"mcp_hub_{tool_def.name}", _invoker, tool_def.action_tier, definition=tool_def)
+        self.register_tool(tool_def.name, fn, tool_def.action_tier, definition=tool_def)
+        self.register_tool(f"mcp_hub_{tool_def.name}", fn, tool_def.action_tier, definition=tool_def)
         return [tool_def]
 
     async def execute_tool(

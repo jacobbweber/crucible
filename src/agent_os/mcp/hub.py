@@ -75,25 +75,50 @@ class McpHubManager:
             await supervisor.disconnect("hub")
         return await self.start_hub(supervisor)
 
-    def load_persisted_tools(self) -> dict[str, tuple[Any, str]]:
-        """Load callable tools and descriptions registered in hub_server.py without stdio overhead."""
+    def load_persisted_tools(self) -> dict[str, tuple[Any, ToolDefinition]]:
+        """Load callable tools and ToolDefinitions registered in hub_server.py without stdio overhead."""
         if not self.server_script.exists():
             return {}
         try:
+            import inspect
+            from agent_os.domain.policy import ActionTier
+            from agent_os.domain.tools import ToolDefinition, ToolParameterSchema
+
             code = self.server_script.read_text(encoding="utf-8")
             ns: dict[str, Any] = {}
             exec(code, ns)
             hub = ns.get("hub")
             if not hub or not hasattr(hub, "_tool_manager"):
                 return {}
-            loaded: dict[str, tuple[Any, str]] = {}
+            loaded: dict[str, tuple[Any, ToolDefinition]] = {}
             for name, tool_obj in getattr(hub._tool_manager, "_tools", {}).items():
                 if name == "system_echo":
                     continue
                 fn = getattr(tool_obj, "fn", None)
                 if callable(fn):
-                    desc = getattr(tool_obj, "description", None) or f"Synthesized tool: {name}"
-                    loaded[name] = (fn, desc)
+                    desc = getattr(tool_obj, "description", None) or inspect.getdoc(fn) or f"Synthesized tool: {name}"
+                    sig = inspect.signature(fn)
+                    params: list[ToolParameterSchema] = []
+                    for p_name, param in sig.parameters.items():
+                        req = param.default is inspect.Parameter.empty
+                        d_val = None if req else param.default
+                        p_desc = f"Target {p_name} parameter (e.g. drive letter or path)" if "path" in p_name else p_name
+                        params.append(
+                            ToolParameterSchema(
+                                name=p_name,
+                                type_name="string",
+                                description=p_desc,
+                                required=req,
+                                default=d_val,
+                            )
+                        )
+                    t_def = ToolDefinition(
+                        name=name,
+                        description=desc,
+                        action_tier=ActionTier.STATE_CHANGE,
+                        parameters=params,
+                    )
+                    loaded[name] = (fn, t_def)
             return loaded
         except Exception:
             return {}

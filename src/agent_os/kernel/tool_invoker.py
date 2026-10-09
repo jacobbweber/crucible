@@ -17,11 +17,23 @@ def make_tool_invoker(
 
     async def _invoker(**kwargs: Any) -> ToolExecutionResult:
         resolved = credential_proxy.resolve_parameters(kwargs)
+        params = dict(resolved.resolved_params)
         try:
-            res = fn(**resolved.resolved_params)
+            sig = inspect.signature(fn)
+            if "path" in params and "path" not in sig.parameters:
+                for alt in ("drive_path", "target_path", "dir_path", "folder_path", "directory"):
+                    if alt in sig.parameters:
+                        params[alt] = params.pop("path")
+                        break
+            elif "drive_path" in params and "drive_path" not in sig.parameters:
+                for alt in ("path", "target_path", "dir_path", "folder_path", "directory"):
+                    if alt in sig.parameters:
+                        params[alt] = params.pop("drive_path")
+                        break
+            res = fn(**params)
             tool_res = await res if inspect.iscoroutine(res) else res
             if not isinstance(tool_res, ToolExecutionResult):
-                tool_res = ToolExecutionResult(tool_name=tool_name, success=True, output=str(res))
+                tool_res = ToolExecutionResult(tool_name=tool_name, success=True, output=str(tool_res))
         except Exception as e:
             tool_res = ToolExecutionResult(tool_name=tool_name, success=False, output="", error=str(e))
 
