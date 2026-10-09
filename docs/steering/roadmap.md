@@ -43,7 +43,7 @@ Per `.agents/rules/live-testing.md`, every live test and smoke verification must
 |---|---|---|---|---|---|
 | 17 | **Truth Reset** | Roadmap, ADR status, doc drift | Docs reflect code ground truth; superseded ADRs marked; ruff/format/pyright gates green | R6 | ✅ Complete |
 | 18 | **Structured Gateway Channel** | Native tool calls + JSON-schema constrained output | Both targets: 9/9 schema-valid outputs, 9/9 streamed tool calls valid and correctly classified, 0/3 false tool calls on conversation | R2, G4–G7 | ✅ Complete |
-| 19 | **Ingredient Contracts & Vocabulary** | Typed contracts, capability signatures, vocabulary registry | Invalid contracts rejected on write; built-in suites declare signatures and schemas | H14, R1 | ⏳ Planned |
+| 19 | **Ingredient Contracts & Vocabulary** | Typed contracts, capability signatures, vocabulary registry | Invalid contracts rejected on write; 8 crafting rules enforced; built-in suites declared; 280 tests pass | H14, R1 | ✅ Complete |
 | 20 | **Ingredient Store & Capability Index** | `ingredients.db`, versioned rows, in-process `EmbeddingProvider` (bge-small ONNX) + recall-only vector index | Seeded recipes migrated; index rebuildable from ground truth | R1 | ⏳ Planned |
 | 21 | **Intent Resolver** | Intent → Retrieve → Bind → Adjudicate | Paraphrased requests resolve to same recipe; params bind via schema; keyword triage deleted | R1 | ⏳ Planned |
 | 22 | **Companion Front Door** | `fulfill_request` native tool call | `[DISPATCH:]`/`[TOOL:]` regex removed; conversational turns never dispatch | R2 | ⏳ Planned |

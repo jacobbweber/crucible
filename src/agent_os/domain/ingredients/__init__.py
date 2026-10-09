@@ -1,0 +1,87 @@
+"""Contract-first ingredients subsystem: typed schemas, capability signatures, and vocabulary."""
+
+from agent_os.domain.ingredients.builtin import get_builtin_tool_contracts
+from agent_os.domain.ingredients.contracts import (
+    AcceptanceCheck,
+    AcceptanceCheckType,
+    ContextSourceContract,
+    ContextSourceKind,
+    ContractExample,
+    ModelProfile,
+    RecipeContract,
+    RecipeStats,
+    RunbookContract,
+    RunbookEngine,
+    RunbookStep,
+    ThinkingLevel,
+    ToolContract,
+    ToolRuntime,
+)
+from agent_os.domain.ingredients.envelope import (
+    IngredientEnvelope,
+    IngredientKind,
+    IngredientStatus,
+    Provenance,
+    canonical_json_bytes,
+    compute_sha256,
+)
+from agent_os.domain.ingredients.intent import TaskIntent
+from agent_os.domain.ingredients.rules import (
+    CraftingRuleViolation,
+    validate_canonical_id,
+    validate_effect_alignment,
+    validate_recipe_contract,
+    validate_schema_structure,
+    validate_tool_contract,
+)
+from agent_os.domain.ingredients.signature import CapabilitySignature
+from agent_os.domain.ingredients.vocabulary import (
+    EFFECT_DESCRIPTIONS,
+    SCOPE_DESCRIPTIONS,
+    VERB_DESCRIPTIONS,
+    Effect,
+    ResourceEntry,
+    ResourceVocabularyRegistry,
+    Scope,
+    Verb,
+)
+
+__all__ = [
+    "AcceptanceCheck",
+    "AcceptanceCheckType",
+    "CapabilitySignature",
+    "ContextSourceContract",
+    "ContextSourceKind",
+    "ContractExample",
+    "CraftingRuleViolation",
+    "EFFECT_DESCRIPTIONS",
+    "Effect",
+    "IngredientEnvelope",
+    "IngredientKind",
+    "IngredientStatus",
+    "ModelProfile",
+    "Provenance",
+    "RecipeContract",
+    "RecipeStats",
+    "ResourceEntry",
+    "ResourceVocabularyRegistry",
+    "RunbookContract",
+    "RunbookEngine",
+    "RunbookStep",
+    "SCOPE_DESCRIPTIONS",
+    "Scope",
+    "TaskIntent",
+    "ThinkingLevel",
+    "ToolContract",
+    "ToolRuntime",
+    "VERB_DESCRIPTIONS",
+    "Verb",
+    "canonical_json_bytes",
+    "compute_sha256",
+    "get_builtin_tool_contracts",
+    "validate_canonical_id",
+    "validate_effect_alignment",
+    "validate_recipe_contract",
+    "validate_schema_structure",
+    "validate_tool_contract",
+]
