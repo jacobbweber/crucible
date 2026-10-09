@@ -31,6 +31,11 @@ Per `.agents/rules/live-testing.md`, every live test and smoke verification must
 | 9 | **Education Engine** | SM-2 spaced repetition, pedagogical stages | Card review intervals, skill advancement via tool invocation | M3 | ✅ Complete |
 | 10 | **End-to-End System** | Complete user day-in-the-life | Complex conversational task dispatching background worker, ambient nudge return | C4 | ✅ Complete |
 | 11 | **Observability & History** | Local MELT, dual-DB search, RCA staging | 50 concurrent workers, hot/cold 90d archiving, health audit, live multi-target matrix | H9, H10, M9, M10 | ✅ Complete |
+| 12 | **FastMCP Tool Hub & Synthesis** | In-process dynamic tool execution | Live synthesis, ephemeral dry-run, in-process FastMCP mounting without Docker | H11 | ✅ Complete |
+| 13 | **Zero-Catalog Semantic Triage** | Autonomous capability gap scouting | LLM capability scout with anti-hijack guardrails, zero regex shortcuts | H1 | ✅ Complete |
+| 14 | **In-Process Compilation & Schemas** | Typed JSON parameter preservation | Dynamic parameter extraction via inspect, alias normalization, AnyIO scope isolation | H11, H12 | ✅ Complete |
+| 15 | **Recipe Contracts & Self-Authoring** | Declarative ingredients & autonomy | Recipe CRUD tools, ingredient schema contracts (tools/model/context), tool refactor/retire | H14 | 🚧 In Progress |
+| 16 | **Systemic Live Telemetry Hooks** | Active turn & pipeline tracing | Wire TelemetryCollector into user turn loop, pipeline runner, and tool invoker | H13 | 🚧 Active Backlog |
 
 ---
 
@@ -44,7 +49,7 @@ Severity: 🔴 Critical · 🟠 High · 🟡 Medium · ⚪ Low
 | **C2** | 🔴 | Runner | ReAct workers are never provided tool schemas or action format in prompt. | ✅ Fixed (Phase 6) |
 | **C3** | 🔴 | Policy | Policy bypass in workers (`STATE_CHANGE` forced on all tools). | ✅ Fixed (Phase 4) |
 | **C4** | 🔴 | Integration | Chat cannot trigger jobs or tools (isolated halves). | ✅ Fixed (Phase 10) |
-| **H1** | 🟠 | Dispatch | Recipe lexical matching ORs every word with low threshold fallback. | ✅ Fixed (Phase 2) |
+| **H1** | 🟠 | Dispatch | Recipe lexical matching ORs every word with low threshold fallback. | ✅ Fixed (Phase 2/13) |
 | **H2** | 🟠 | Runner | Recipe `execution_engine` ignored; PEV and stategraph unreachable. | ✅ Fixed (Phase 6) |
 | **H3** | 🟠 | Gateway | Runner sends `role="tool"` without `tool_call_id`. | ✅ Fixed (Phase 1) |
 | **H4** | 🟠 | Security | Secrets scrubbed from output but not error; MAC-address default key derivation. | ✅ Fixed (Phase 4) |
@@ -54,6 +59,10 @@ Severity: 🔴 Critical · 🟠 High · 🟡 Medium · ⚪ Low
 | **H8** | 🟠 | Wiki | Inbox note graduation silently overwrites same-named files. | ✅ Fixed (Phase 3) |
 | **H9** | 🟠 | Warehouse | `WikiStore` initialized both `01_Notes` and `01_Knowledge`, diverting graduation. | ✅ Fixed (Phase 11) |
 | **H10** | 🟠 | Telemetry | Unbounded `telemetry.db` span growth on long-running nodes. | ✅ Fixed (Phase 11) |
+| **H11** | 🟠 | Runner / Hub | AnyIO cancel scope collision when executing synthesized tools across nested event loops. | ✅ Fixed (Phase 14) |
+| **H12** | 🟠 | Tools / Schema | ToolDefinition constructed with empty parameters `[]`, stripping arguments from ReAct prompt. | ✅ Fixed (Phase 14) |
+| **H13** | 🟠 | Telemetry | Telemetry database initialized but live runtime turns and pipelines uninstrumented. | 🚧 Open (Phase 16) |
+| **H14** | 🟠 | Autonomy | Crucible cannot inspect, refactor, or retire its own recipe ingredients or broken tools. | 🚧 Open (Phase 15) |
 | **M1** | 🟡 | Layering | Raw SQL executed from kernel signaling dispatcher. | ✅ Fixed (Phase 5) |
 | **M2** | 🟡 | Chat | Foreign key violations on unknown session swallowed silently. | ✅ Fixed (Phase 5) |
 | **M3** | 🟡 | Education | Education datetime parsing and pedagogical advancement unwired. | ✅ Fixed (Phase 9) |
