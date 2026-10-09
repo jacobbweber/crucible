@@ -74,3 +74,27 @@ class McpHubManager:
         if supervisor.is_connected("hub"):
             await supervisor.disconnect("hub")
         return await self.start_hub(supervisor)
+
+    def load_persisted_tools(self) -> dict[str, tuple[Any, str]]:
+        """Load callable tools and descriptions registered in hub_server.py without stdio overhead."""
+        if not self.server_script.exists():
+            return {}
+        try:
+            code = self.server_script.read_text(encoding="utf-8")
+            ns: dict[str, Any] = {}
+            exec(code, ns)
+            hub = ns.get("hub")
+            if not hub or not hasattr(hub, "_tool_manager"):
+                return {}
+            loaded: dict[str, tuple[Any, str]] = {}
+            for name, tool_obj in getattr(hub._tool_manager, "_tools", {}).items():
+                if name == "system_echo":
+                    continue
+                fn = getattr(tool_obj, "fn", None)
+                if callable(fn):
+                    desc = getattr(tool_obj, "description", None) or f"Synthesized tool: {name}"
+                    loaded[name] = (fn, desc)
+            return loaded
+        except Exception:
+            return {}
+

@@ -137,11 +137,15 @@ class AgentOSKernel:
         self.fact_prefetcher = FactPrefetcher(facts_repo=facts_repo)
 
     def _register_default_tools(self) -> None:
-        """Register built-in wiki, education, telemetry, session, and workspace tools."""
+        """Register built-in tools and any persisted synthesized FastMCP hub tools."""
         for s in (self.wiki_tools, self.education_tools, self.telemetry_tools, self.session_tools, self.workspace_tools):
             for defn in s.get_definitions():
                 if fn := getattr(s, defn.name, None):
                     self.register_tool(defn.name, fn, defn.action_tier, definition=defn)
+        for name, (fn, desc) in self.mcp_hub.load_persisted_tools().items():
+            defn = ToolDefinition(name=name, description=desc, action_tier=ActionTier.STATE_CHANGE)
+            self.register_tool(name, fn, ActionTier.STATE_CHANGE, definition=defn)
+            self.register_tool(f"mcp_hub_{name}", fn, ActionTier.STATE_CHANGE, definition=defn)
 
     def register_tool(
         self, name: str, fn: Callable[..., Any],

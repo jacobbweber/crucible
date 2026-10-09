@@ -48,7 +48,10 @@ def is_recipe_compatible(task: str, recipe: RecipeRecord) -> bool:
     has_host_path = any(re.search(p, task) for p in HOST_PATH_PATTERNS) or any(
         k in lower_task for k in ["drive", "desktop", "host machine", "local machine"]
     )
-    if has_host_path and not any(t.startswith("host_") for t in req_tools):
+    if has_host_path and not any(
+        t.startswith("host_") or any(w in t for w in ("drive", "directory", "dir", "filesystem"))
+        for t in req_tools
+    ):
         return False
 
     # 2. Warehouse note capture check: task must actually target saving notes or knowledge

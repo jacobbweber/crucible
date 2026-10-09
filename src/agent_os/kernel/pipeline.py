@@ -1,4 +1,5 @@
 import inspect
+import re
 from collections.abc import Callable
 from typing import Any
 
@@ -35,6 +36,14 @@ class JobAssemblyPipeline:
 
     def triage_capability_gap(self, task: str, available_tools: list[str]) -> CapabilityGapReport:
         """Triage whether a task can be satisfied by catalog recipes or requires synthesis."""
+        if self.recipe_repo.get_recipe("host_filesystem_inspection") is None:
+            for t in available_tools:
+                if any(w in t for w in ("list_drive", "list_dir")):
+                    self._auto_graduate_synthesized_tool(
+                        type("Prop", (), {"tool_name": t, "description": ""})(), "Host Filesystem"
+                    )
+                    break
+
         matches = self.recipe_repo.match_intent(task, limit=5)
         threshold = getattr(self.dispatcher, "threshold", 0.5)
         best_match = select_best_recipe_match(task, matches, threshold)
@@ -46,7 +55,11 @@ class JobAssemblyPipeline:
 
         if best_match is not None:
             top_recipe = best_match.recipe
-            available_set = set(available_tools)
+            available_set = (
+                set(available_tools)
+                | {t.removeprefix("mcp_hub_") for t in available_tools}
+                | {f"mcp_hub_{t}" for t in available_tools}
+            )
             required = top_recipe.metadata.required_tools
             missing = [tool for tool in required if tool not in available_set]
             if not missing:
@@ -135,6 +148,8 @@ class JobAssemblyPipeline:
                                 context_payload=request.context_payload,
                             )
                             self.signaler.signal_completion(request.session_id, dispatch_res.envelope)
+                            if dispatch_res.envelope.status == "completed":
+                                self._auto_graduate_synthesized_tool(prop, missing_domain)
                             return PipelineExecutionResult(
                                 session_id=request.session_id,
                                 task=request.task,
@@ -243,3 +258,41 @@ class JobAssemblyPipeline:
             body=result.dispatch_result.envelope.summary,
         )
         return self.recipe_repo.upsert_recipe(record)
+
+    def _auto_graduate_synthesized_tool(self, prop: Any, domain: str) -> RecipeRecord | None:
+        """Auto-promote a verified and executed tool into a generalized catalog recipe."""
+        t_name = getattr(prop, "tool_name", "")
+        if not t_name:
+            return None
+        is_fs = any(k in t_name.lower() or k in domain.lower() for k in ("drive", "dir", "file", "filesystem"))
+        if is_fs:
+            rec_id, name = "host_filesystem_inspection", "Host Filesystem Directory & File Inspection"
+            desc = "Enumerate, list, and inspect directories, drives, folders, and files on the host filesystem."
+            tags = ["filesystem", "directory", "dir", "drive", "folder", "list", "files", "contents", "enumerate", "inspect", "path", "host"]
+            body = (
+                "# Host Filesystem Directory & File Inspection\n\n"
+                "## Goal\nEnumerate or inspect files, drives, and directories on the local host machine.\n\n"
+                "## Instructions\n"
+                f"1. Identify target path from user directive (e.g. drive letter or directory path).\n"
+                f"2. Execute `{t_name}` with target path.\n"
+                "3. Present listing in a clean Markdown table with names, types, and sizes.\n"
+            )
+        else:
+            clean_dom = domain.strip().title()
+            slug = re.sub(r"[^a-zA-Z0-9_]+", "_", clean_dom.lower()).strip("_")
+            rec_id, name = f"recipe_{slug}", f"{clean_dom} Automation"
+            desc = getattr(prop, "description", None) or f"Automated operations for {clean_dom}."
+            domain_words = [w.lower() for w in re.findall(r"\w+", f"{clean_dom} {t_name}") if len(w) > 2]
+            tags = list(set(domain_words + ["recipe", "auto_graduated", "automated"]))
+            body = f"# {name}\n\n## Goal\nExecute {clean_dom} directives using `{t_name}`.\n"
+
+        rec = RecipeRecord(
+            metadata=RecipeMetadata(
+                recipe_id=rec_id, name=name, description=desc,
+                execution_engine="react", target_model_tier="reasoning",
+                tags=tags, required_tools=[t_name], timeout_seconds=300,
+            ),
+            markdown_path=f"recipes/{rec_id}.md", body=body,
+        )
+        return self.recipe_repo.upsert_recipe(rec)
+

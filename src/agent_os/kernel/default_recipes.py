@@ -260,3 +260,5 @@ def ensure_default_recipes(recipe_repo: RecipeRepository) -> None:
         if recipe_repo.get_recipe(recipe.metadata.recipe_id) is None:
             recipe_repo.upsert_recipe(recipe)
 
+
+
