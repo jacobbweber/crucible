@@ -1,7 +1,7 @@
 # ADR-0012: In-Process Tool Compilation & Cancel Scope Resolution
 
 > **Date**: 2026-10-08  
-> **Status**: Accepted  
+> **Status**: Superseded in part by [ADR-0015](0015-contract-first-ingredients-and-structured-intent-resolution.md) — in-process `exec` of synthesized code is replaced by out-of-process hub execution; schema extraction is replaced by declared contracts.  
 > **Deciders**: Human Product Owner, AI Assistant  
 > **Context**: How dynamically synthesized FastMCP tools are loaded and executed in-process without crashing async worker threads due to AnyIO cancel scope collisions or cross-thread event loop mismatch.
 

@@ -1,7 +1,7 @@
 # ADR-0013: Dynamic Capability Auto-Graduation & Generalized Recipe Indexing
 
 > **Date**: 2026-10-09  
-> **Status**: Accepted  
+> **Status**: Superseded by [ADR-0015](0015-contract-first-ingredients-and-structured-intent-resolution.md) — graduation was implemented via hardcoded filesystem branches and broad keyword tags.  
 > **Deciders**: Human Product Owner, AI Assistant  
 > **Context**: How Crucible automatically promotes successfully synthesized tools into reusable, generalized recipes so the system learns from its own successes and never repeats expensive synthesis loops.
 

@@ -32,10 +32,24 @@ Per `.agents/rules/live-testing.md`, every live test and smoke verification must
 | 10 | **End-to-End System** | Complete user day-in-the-life | Complex conversational task dispatching background worker, ambient nudge return | C4 | ✅ Complete |
 | 11 | **Observability & History** | Local MELT, dual-DB search, RCA staging | 50 concurrent workers, hot/cold 90d archiving, health audit, live multi-target matrix | H9, H10, M9, M10 | ✅ Complete |
 | 12 | **FastMCP Tool Hub & Synthesis** | In-process dynamic tool execution | Live synthesis, ephemeral dry-run, in-process FastMCP mounting without Docker | H11 | ✅ Complete |
-| 13 | **Zero-Catalog Semantic Triage** | Autonomous capability gap scouting | LLM capability scout with anti-hijack guardrails, zero regex shortcuts | H1 | ✅ Complete |
-| 14 | **In-Process Compilation & Schemas** | Typed JSON parameter preservation | Dynamic parameter extraction via inspect, alias normalization, AnyIO scope isolation | H11, H12 | ✅ Complete |
-| 15 | **Recipe Contracts & Self-Authoring** | Declarative ingredients & autonomy | Recipe CRUD tools, ingredient schema contracts (tools/model/context), tool refactor/retire | H14 | ✅ Complete |
+| 13 | **Zero-Catalog Semantic Triage** | Autonomous capability gap scouting | LLM capability scout with anti-hijack guardrails, zero regex shortcuts | H1, R1 | ⚠️ Reopened → superseded by Phases 18–21 (keyword triage still present) |
+| 14 | **In-Process Compilation & Schemas** | Typed JSON parameter preservation | Dynamic parameter extraction via inspect, alias normalization, AnyIO scope isolation | H11, H12, R4 | ⚠️ Partially superseded (in-kernel `exec` replaced in Phase 23) |
+| 15 | **Recipe Contracts & Self-Authoring** | Declarative ingredients & autonomy | Recipe CRUD tools, ingredient schema contracts (tools/model/context), tool refactor/retire | H14 | ⚠️ Reopened → superseded by Phases 19–20 (ingredient contracts never implemented) |
 | 16 | **Systemic Live Telemetry Hooks** | Active turn & pipeline tracing | Wire TelemetryCollector into user turn loop, pipeline runner, and tool invoker | H13 | ✅ Complete |
+
+### ADR-0015 Rebuild: Contract-First Ingredients & Structured Intent Resolution
+
+| # | Phase | Core Focus | Live Verification Scenarios | Target Suspects | Status |
+|---|---|---|---|---|---|
+| 17 | **Truth Reset** | Roadmap, ADR status, doc drift | Docs reflect code ground truth; superseded ADRs marked; ruff/format/pyright gates green | R6 | ✅ Complete |
+| 18 | **Structured Gateway Channel** | Native tool calls + JSON-schema constrained output | Both targets: 9/9 schema-valid outputs, 9/9 streamed tool calls valid and correctly classified, 0/3 false tool calls on conversation | R2, G4–G7 | ✅ Complete |
+| 19 | **Ingredient Contracts & Vocabulary** | Typed contracts, capability signatures, vocabulary registry | Invalid contracts rejected on write; built-in suites declare signatures and schemas | H14, R1 | ⏳ Planned |
+| 20 | **Ingredient Store & Capability Index** | `ingredients.db`, versioned rows, embedding index | Seeded recipes migrated; index rebuildable from ground truth | R1 | ⏳ Planned |
+| 21 | **Intent Resolver** | Intent → Retrieve → Bind → Adjudicate | Paraphrased requests resolve to same recipe; params bind via schema; keyword triage deleted | R1 | ⏳ Planned |
+| 22 | **Companion Front Door** | `fulfill_request` native tool call | `[DISPATCH:]`/`[TOOL:]` regex removed; conversational turns never dispatch | R2 | ⏳ Planned |
+| 23 | **Contract-First Toolsmith & Sandboxed Hub** | Contract → implement → contract tests; out-of-process execution | Synthesized code never `exec`'d in kernel; mounting honors approval mode | R4, R5 | ⏳ Planned |
+| 24 | **Telemetry Fix & Lifecycle Promotion** | Tool-level journey steps; draft → candidate → active | Candidate promoted after verified runs on distinct inputs | R3 | ⏳ Planned |
+| 25 | **Nightly Curator Routine** | Signature clustering, contract regression, demotion, merge | Repeated ephemeral jobs proposed as candidates; failing tools demoted with RCA | R3 | ⏳ Planned |
 
 ---
 
@@ -62,11 +76,21 @@ Severity: 🔴 Critical · 🟠 High · 🟡 Medium · ⚪ Low
 | **H11** | 🟠 | Runner / Hub | AnyIO cancel scope collision when executing synthesized tools across nested event loops. | ✅ Fixed (Phase 14) |
 | **H12** | 🟠 | Tools / Schema | ToolDefinition constructed with empty parameters `[]`, stripping arguments from ReAct prompt. | ✅ Fixed (Phase 14) |
 | **H13** | 🟠 | Telemetry | Telemetry database initialized but live runtime turns and pipelines uninstrumented. | ✅ Fixed (Phase 16) |
-| **H14** | 🟠 | Autonomy | Crucible cannot inspect, refactor, or retire its own recipe ingredients or broken tools. | ✅ Fixed (Phase 15) |
+| **H14** | 🟠 | Autonomy | System cannot inspect, refactor, or retire its own recipe ingredients or broken tools. | ⚠️ Partial — tool inspect/refactor/retire exist; ingredient contracts do not (Phase 19) |
+| **R1** | 🔴 | Dispatch | Recipe matching, gap detection, and tool selection rely on hardcoded keyword sets, regexes, and recipe-id string checks (`recipe_triage.py`, `capability_scout.identify_missing_domain`, pipeline filesystem branches, chamber/dispatcher tool injection). | ⏳ Open (Phases 19–21) |
+| **R2** | 🔴 | Gateway | No structured model I/O: `CompletionRequest` lacks `tools`/`response_format`; all decisions parse JSON or `[DISPATCH:]` directives out of prose. | 🟡 Gateway channel fixed (Phase 18); callers migrate in Phases 21–22 |
+| **R3** | 🟠 | Telemetry | Journey steps store `step_type` as `node_name`, so Pattern Scout and Recipe Promoter cluster on thought/tool_call markers instead of tool identities. | ⏳ Open (Phase 24) |
+| **R4** | 🔴 | Security | Synthesized tool code is `exec`'d inside the kernel process after a subprocess dry run, and auto-mounted mid-pipeline. | ⏳ Open (Phase 23) |
+| **R5** | 🟠 | Policy | Approval mode is fixed at boot, governs only execution (not mounting/promotion), and cannot be changed at runtime. | ⏳ Open (Phase 23) |
+| **R6** | 🟡 | Docs | Roadmap, ADR-0011/0013/0014, and `recipes.md` describe behavior not present in code. | ✅ Fixed (Phase 17) |
+| **G4** | 🟠 | Gateway | Both targets ignore `$ref`/`$defs` in tool schemas and double-encode nested objects as JSON strings. | ✅ Fixed (Phase 18) — model-facing schemas are inlined (`inline_refs`) |
+| **G5** | 🟡 | Gateway | vLLM streams tool-call arguments as index-keyed fragments; Ollama emits whole calls. | ✅ Fixed (Phase 18) — `ToolCallAccumulator` emits assembled calls on the terminal chunk |
+| **G6** | 🟡 | Gateway | `tool_choice: "required"` produces duplicate calls on the vLLM target; tool use without a system prompt is inconsistent. | ✅ Addressed — `required` unsupported; use `auto` or a named tool with a system prompt |
+| **G7** | 🟠 | Intent | Context-free schema extraction misclassifies "folders on my M drive" as `filesystem.file` 3/3 on both targets; the companion tool-call path classifies 9/9 correctly. | ⏳ Open (Phases 19/21) — extract intent via companion `fulfill_request`; per-value vocabulary descriptions; dual retrieval + bind gate |
 | **M1** | 🟡 | Layering | Raw SQL executed from kernel signaling dispatcher. | ✅ Fixed (Phase 5) |
 | **M2** | 🟡 | Chat | Foreign key violations on unknown session swallowed silently. | ✅ Fixed (Phase 5) |
 | **M3** | 🟡 | Education | Education datetime parsing and pedagogical advancement unwired. | ✅ Fixed (Phase 9) |
-| **M4** | 🟡 | Code Quality | Duplicate attribute aliases throughout codebase. | ✅ Fixed |
+| **M4** | 🟡 | Code Quality | Duplicate attribute aliases throughout codebase (`chamber`/`recipe_chamber`, `threshold`/`match_threshold`, `repo`/`session_repo`, `adapter`/`model_adapter`). | ⚠️ Reopened (cleanup during Phases 21–22) |
 | **M5** | 🟡 | Context | Token counting hardcoded to `len // 4` without model budget limits. | ✅ Fixed (Phase 5) |
 | **M6** | 🟡 | Runner | Execution timeouts passed but not enforced. | ✅ Fixed (Phase 6) |
 | **M7** | 🟡 | Config | `AGENT_OS_DATA_DIR` mismatch in `.env.example`. | ✅ Fixed (Phase 0) |

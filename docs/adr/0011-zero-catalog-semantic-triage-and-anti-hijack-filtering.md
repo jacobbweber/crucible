@@ -1,7 +1,7 @@
 # ADR-0011: Zero-Catalog Semantic Triage & Anti-Hijack Capability Scouting
 
 > **Date**: 2026-10-08  
-> **Status**: Accepted  
+> **Status**: Superseded by [ADR-0015](0015-contract-first-ingredients-and-structured-intent-resolution.md) — implementation retained keyword/regex triage (`recipe_triage.py`) contrary to this ADR's drivers.  
 > **Deciders**: Human Product Owner, AI Assistant  
 > **Context**: How Crucible detects missing capabilities and dispatches to tool synthesis without fragile regex keyword matching or monolithic catalog bloat, while protecting against conversational prompt hijacking.
 

@@ -1,82 +1,60 @@
-# Recipe Authoring & Tool Reference
+# Recipes & Tools Reference
 
-> **Purpose**: Guide for writing declarative runbooks, registering tools, and authoring automated knowledge routines in Agent OS.
-
----
-
-## 1. What is a Recipe?
-
-In Agent OS, recipes replace monolithic, brittle agent personas with **deterministic execution graphs**.
-Recipes live as Markdown files in `data/wiki/03_Recipes/` and are indexed into SQLite FTS5 for rapid lexical matching.
-
-When the companion encounters a task matching a recipe's trigger intent, the kernel dispatches the recipe to the Recipe Chamber where an isolated worker executes it step-by-step.
+> **Purpose**: Describes how recipes and tools work **today**, and where the design is going.
+>
+> [!IMPORTANT]
+> The recipe layer is being rebuilt under [ADR-0015](adr/0015-contract-first-ingredients-and-structured-intent-resolution.md) (Phases 17–25 in the [roadmap](steering/roadmap.md)). Sections 1–3 describe current behavior so expectations match the code. Section 4 summarizes the target design.
 
 ---
 
-## 2. Recipe File Format
+## 1. Current Recipe Model (pre-ADR-0015)
 
-A recipe is a Markdown document with strict YAML frontmatter:
+Recipes are rows in `recipes.db` (SQLite + FTS5). They are **not** markdown files in the vault. Schema ([`RecipeMetadata`](../src/agent_os/domain/recipe.py)):
 
-```markdown
----
-id: recipe-wiki-digest
-title: Daily Knowledge Digest
-description: Aggregates recent notes from 00_Inbox and compiles a structured summary into 01_Notes.
-version: 1.0.0
-trigger_phrases:
-  - "daily digest"
-  - "summarize new notes"
-  - "compile knowledge digest"
-execution_engine: react
-max_turns: 10
-timeout_seconds: 60
-required_tools:
-  - wiki_list
-  - wiki_read
-  - wiki_write
----
-
-# Operational Runbook: Daily Knowledge Digest
-
-## Objective
-Review notes created in `00_Inbox` over the last 24 hours. Extract key insights, identify recurring themes, and output a concise digest note into `01_Notes/Digests/`.
-
-## Execution Steps
-1. Call `wiki_list` with path `00_Inbox` to identify pending notes.
-2. Read notes using `wiki_read` and extract key bullet points.
-3. Call `wiki_write` to save the formatted digest to `01_Notes/Digests/YYYY-MM-DD-digest.md`.
-4. Return a summary envelope of $\le 200$ tokens referencing the generated file path.
-```
-
----
-
-## 3. Supported Execution Engines
-
-| Engine | Ideal Use Case | Behavior |
+| Field | Type | Notes |
 |---|---|---|
-| `react` (Default) | Exploratory tasks, multi-step search & analysis | Model alternates between `Thought:`, `Action:`, and `Observation:` until task goal is achieved. Cycle detection prevents loops. |
-| `pev` | Structured data pipelines | **Plan-Execute-Verify**: First step compiles a deterministic plan, second step runs batch tools, third step verifies outputs against constraints. |
-| `stategraph` | Complex multi-branch workflows | Explicit finite-state machine transitions defined in recipe metadata. |
+| `recipe_id` | str | Primary key |
+| `name`, `description` | str | Indexed in FTS5 |
+| `tags` | list[str] | Indexed in FTS5 |
+| `execution_engine` | `direct` \| `react` \| `plan_execute_verify` \| `stategraph` | Runner modality |
+| `target_model_tier` | `fast` \| `reasoning` \| `coding` | Stored; not yet used for routing |
+| `required_tools` | list[str] | Tool names only; no parameter or output contracts |
+| `timeout_seconds` | int | Enforced by the runner |
+| `body` | str | Markdown runbook, used as the worker system prompt |
 
----
+Seeded recipes are defined in [`default_recipes.py`](../src/agent_os/kernel/default_recipes.py).
 
-## 4. Built-in Tool Dictionary
+## 2. Current Lookup Behavior (known-fragile)
 
-Tools are pure-Python callable classes registered in the kernel. All parameters are strictly typed.
+1. `RecipeRepository.match_intent` runs an FTS5 BM25 query that ORs every non-stop-word in the task.
+2. `recipe_triage.select_best_recipe_match` applies a score threshold and hardcoded keyword compatibility rules.
+3. On no match, the dispatcher asks the model for a JSON task brief and runs an ephemeral worker.
+4. If the capability scout reports a gap, the toolsmith synthesizes a tool, dry-runs it, mounts it, and auto-creates a recipe.
 
-### 4.1 Knowledge & Wiki Tools
-* `wiki_search(query: str, limit: int = 5)`: Full-text lexical search across all Wiki folders using SQLite FTS5.
-* `wiki_read(path: str)`: Safely reads the text of a Markdown note. Path traversal (`../`) is strictly rejected.
-* `wiki_write(path: str, content: str, tags: list[str] = [])`: Writes or updates a note with YAML frontmatter.
-* `wiki_list(folder: str)`: Lists notes within `00_Inbox`, `01_Notes`, `02_Archive`, or `03_Recipes`.
+Steps 1, 2 and 4 rely on keyword heuristics tracked as finding **R1**. They will be removed in Phase 21.
 
-### 4.2 Fact Store Tools
-* `fact_search(query: str, limit: int = 5)`: Queries the atomic user facts database (`facts.db`) for specific preferences, hardware paths, or constraints.
-* `fact_record(fact: str, category: str)`: Persists a validated atomic fact into SQLite.
+## 3. Built-in Tools
 
-### 4.3 Education & Mastery Tools
-* `flashcard_review(topic: str, limit: int = 5)`: Fetches due cards for spaced-repetition review based on SM-2 intervals.
-* `flashcard_update(card_id: str, score: int)`: Updates card interval, easiness factor, and mastery level based on performance score (0 to 5).
+All tools are registered by the kernel with an `ActionTier` (`read`, `state_change`, `destructive`) that the policy gate evaluates.
+
+| Suite | Tools |
+|---|---|
+| Wiki / vault | `wiki_read`, `wiki_write`, `wiki_search`, `wiki_list_category`, `wiki_graduate_inbox` (each also aliased as `warehouse_*`) |
+| Session history | `session_search_history` |
+| Education | `education_record_grade`, `education_advance_stage` |
+| Telemetry | `telemetry_get_health_summary`, `telemetry_audit_errors`, `telemetry_stage_rca`, `telemetry_prune_old_records` |
+| Workspace | `workspace_read`, `workspace_write`, `workspace_patch`, `workspace_tree`, `workspace_command`, `workspace_rollback` |
+| Recipe management | `recipe_list`, `recipe_get`, `recipe_upsert`, `recipe_delete` |
+| Tool lifecycle | `tool_inspect`, `tool_refactor`, `tool_retire` |
+
+Synthesized tools live in `<data_dir>/workspace/mcp_servers/hub/hub_server.py`.
+
+## 4. Target Design (ADR-0015)
+
+* **Ingredients** (tool, context source, model profile, runbook) and **recipes** are typed, versioned contracts with a lifecycle status (`draft` → `candidate` → `active` → `deprecated` → `retired`).
+* Each ingredient declares a **capability signature** from a controlled vocabulary (verb, resource, scope, effect), plus input/output JSON Schemas.
+* Lookup is **Intent → Retrieve → Bind → Adjudicate**: schema-constrained intent extraction, then structured plus semantic retrieval, then schema-validated parameter binding, then a bounded model choice.
+* New recipes are earned through verified runs. Real-time crafting creates candidates; nightly curation clusters, promotes, demotes, and merges.
 
 ---
 

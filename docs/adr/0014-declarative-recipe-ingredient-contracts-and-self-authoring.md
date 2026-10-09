@@ -1,7 +1,7 @@
 # ADR-0014: Declarative Recipe Ingredient Contracts & Autonomous Self-Authoring
 
 > **Date**: 2026-10-09  
-> **Status**: Accepted  
+> **Status**: Superseded by [ADR-0015](0015-contract-first-ingredients-and-structured-intent-resolution.md) — the ingredient contract in §3.1 was never implemented; the self-authoring tool primitives (§3.2) remain valid and are carried forward.  
 > **Deciders**: Human Product Owner, AI Assistant  
 > **Context**: How recipes serve as declarative playbooks (combining tools, models, context, and runbooks as modular ingredients) and how Crucible is given the autonomous primitives to inspect, create, modify, and retire its own capabilities.
 
