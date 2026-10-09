@@ -44,12 +44,11 @@ def is_recipe_compatible(task: str, recipe: RecipeRecord) -> bool:
     recipe_id = recipe.metadata.recipe_id
     req_tools = recipe.metadata.required_tools
 
-    # 1. Host filesystem path check: if task targets a host path/drive, warehouse vault tools cannot fulfill it
+    # 1. Host filesystem path check: if task targets a host path/drive, recipe must have host tools
     has_host_path = any(re.search(p, task) for p in HOST_PATH_PATTERNS) or any(
         k in lower_task for k in ["drive", "desktop", "host machine", "local machine"]
     )
-    only_vault_tools = all(t.startswith(("warehouse_", "wiki_", "session_")) for t in req_tools)
-    if has_host_path and only_vault_tools:
+    if has_host_path and not any(t.startswith("host_") for t in req_tools):
         return False
 
     # 2. Warehouse note capture check: task must actually target saving notes or knowledge
@@ -59,8 +58,10 @@ def is_recipe_compatible(task: str, recipe: RecipeRecord) -> bool:
 
     # 3. Telemetry health check: task must target observability / diagnostics
     if "health_audit" in recipe_id or any("telemetry" in t for t in req_tools):
-        health_words = {"health", "audit", "telemetry", "error", "errors", "vital", "vitals", "rca", "diagnostic", "diagnostics"}
-        if not (task_words & health_words):
+        health_primary = {"health", "telemetry", "vital", "vitals", "rca", "incident"}
+        if not (task_words & health_primary):
+            return False
+        if any(w in task_words for w in ("file", "files", "folder", "directory", "dir", "list", "read", "write")):
             return False
 
     # 4. Docker check: task must target containers / docker

@@ -7,6 +7,7 @@ from typing import Any
 from agent_os.domain.dispatch import DispatchDecision, DispatchResult
 from agent_os.domain.gateway import ChatMessage, CompletionRequest, estimate_tokens
 from agent_os.domain.ipc import SubJobExecutionRequest
+from agent_os.domain.recipe import RecipeRecord
 from agent_os.domain.runbook import CompiledExecutionPacket, TaskBrief
 from agent_os.infrastructure.gateway.base import BaseModelAdapter
 from agent_os.infrastructure.storage.recipe_repo import RecipeRepository
