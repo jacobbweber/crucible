@@ -31,7 +31,9 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     p.add_argument("--host", default=None, help="Host binding (default: from .env or 127.0.0.1)")
     p.add_argument("--port", type=int, default=8000, help="MCP SSE port (default: 8000)")
     p.add_argument("--ui", action="store_true", help="run the local companion Web UI")
-    p.add_argument("--ui-port", type=int, default=None, help="Web UI port (default: from .env or 3000)")
+    p.add_argument(
+        "--ui-port", type=int, default=None, help="Web UI port (default: from .env or 3000)"
+    )
     return p.parse_args(argv)
 
 
@@ -132,9 +134,7 @@ def main(argv: list[str] | None = None) -> None:
 
         ui_host = args.host or app_config.web_host
         ui_port = args.ui_port or app_config.web_port
-        console.info(
-            f"agent-os Web UI | data={runtime.data_dir} | http://{ui_host}:{ui_port}"
-        )
+        console.info(f"agent-os Web UI | data={runtime.data_dir} | http://{ui_host}:{ui_port}")
         run_web_server(kernel=runtime.kernel, host=ui_host, port=ui_port)
         return
 

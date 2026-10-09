@@ -1,7 +1,6 @@
 """Model Context Protocol (MCP) client supervisor managing stdio and SSE connections."""
 
 import contextlib
-import json
 import re
 from dataclasses import dataclass, field
 from typing import Any
@@ -71,7 +70,9 @@ class McpClientSupervisor:
         try:
             if config.transport == "stdio":
                 if not config.command:
-                    raise ValueError(f"Stdio transport for '{config.server_id}' requires a 'command'.")
+                    raise ValueError(
+                        f"Stdio transport for '{config.server_id}' requires a 'command'."
+                    )
                 params = StdioServerParameters(
                     command=config.command,
                     args=config.args,
@@ -84,7 +85,9 @@ class McpClientSupervisor:
                     raise ValueError(f"SSE transport for '{config.server_id}' requires a 'url'.")
                 read_stream, write_stream = await stack.enter_async_context(sse_client(config.url))
             else:
-                raise ValueError(f"Unsupported transport '{config.transport}'. Must be 'stdio' or 'sse'.")
+                raise ValueError(
+                    f"Unsupported transport '{config.transport}'. Must be 'stdio' or 'sse'."
+                )
 
             session = await stack.enter_async_context(ClientSession(read_stream, write_stream))
             await session.initialize()
@@ -103,13 +106,18 @@ class McpClientSupervisor:
                 # Infer action tier
                 tier = (
                     ActionTier.READ
-                    if READ_ACTION_PATTERNS.search(mcp_tool.name) or READ_ACTION_PATTERNS.search(desc)
+                    if READ_ACTION_PATTERNS.search(mcp_tool.name)
+                    or READ_ACTION_PATTERNS.search(desc)
                     else ActionTier.STATE_CHANGE
                 )
 
                 # Convert JSON schema parameters
                 parameters: list[ToolParameterSchema] = []
-                schema = getattr(mcp_tool, "input_schema", None) or getattr(mcp_tool, "inputSchema", None) or {}
+                schema = (
+                    getattr(mcp_tool, "input_schema", None)
+                    or getattr(mcp_tool, "inputSchema", None)
+                    or {}
+                )
                 properties = schema.get("properties", {})
                 required_set = set(schema.get("required", []))
 
@@ -172,7 +180,9 @@ class McpClientSupervisor:
                 else:
                     outputs.append(str(content_block))
 
-            merged_output = "\n".join(outputs) if outputs else "Tool execution succeeded with no content."
+            merged_output = (
+                "\n".join(outputs) if outputs else "Tool execution succeeded with no content."
+            )
             if is_error:
                 return ToolExecutionResult(
                     tool_name=tool_name,

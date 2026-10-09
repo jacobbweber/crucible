@@ -136,14 +136,16 @@ def build_api_routes(kernel: AgentOSKernel) -> list[Route]:
         proposals = []
         if getattr(kernel, "toolsmith", None):
             for p in kernel.toolsmith.list_proposals():
-                proposals.append({
-                    "tool_name": p.tool_name,
-                    "domain": p.domain,
-                    "description": p.description,
-                    "verified": p.verified,
-                    "dry_run_output": p.dry_run_output,
-                    "staged_path": p.staged_path,
-                })
+                proposals.append(
+                    {
+                        "tool_name": p.tool_name,
+                        "domain": p.domain,
+                        "description": p.description,
+                        "verified": p.verified,
+                        "dry_run_output": p.dry_run_output,
+                        "staged_path": p.staged_path,
+                    }
+                )
         tools = [
             {"name": name, "tier": str(tier.value if hasattr(tier, "value") else tier)}
             for name, tier in kernel._tool_tiers.items()
@@ -168,11 +170,13 @@ def build_api_routes(kernel: AgentOSKernel) -> list[Route]:
         )
         try:
             mcp_tools = await kernel.mount_mcp_server(cfg)
-            return JSONResponse({
-                "server_id": server_id,
-                "status": "connected",
-                "tools": [t.name for t in mcp_tools],
-            })
+            return JSONResponse(
+                {
+                    "server_id": server_id,
+                    "status": "connected",
+                    "tools": [t.name for t in mcp_tools],
+                }
+            )
         except Exception as exc:
             return JSONResponse({"error": str(exc)}, status_code=500)
 
@@ -180,11 +184,13 @@ def build_api_routes(kernel: AgentOSKernel) -> list[Route]:
         tool_name = request.path_params["tool_name"]
         try:
             live_tools = await kernel.activate_tool_proposal(tool_name)
-            return JSONResponse({
-                "status": "activated",
-                "tool_name": tool_name,
-                "live_tools": [t.name for t in live_tools],
-            })
+            return JSONResponse(
+                {
+                    "status": "activated",
+                    "tool_name": tool_name,
+                    "live_tools": [t.name for t in live_tools],
+                }
+            )
         except Exception as exc:
             return JSONResponse({"error": str(exc)}, status_code=500)
 
@@ -192,7 +198,9 @@ def build_api_routes(kernel: AgentOSKernel) -> list[Route]:
         tool_name = request.path_params["tool_name"]
         if getattr(kernel, "toolsmith", None):
             res = kernel.toolsmith.reject_proposal(tool_name)
-            return JSONResponse({"status": "rejected" if res else "not_found", "tool_name": tool_name})
+            return JSONResponse(
+                {"status": "rejected" if res else "not_found", "tool_name": tool_name}
+            )
         return JSONResponse({"error": "Toolsmith not configured"}, status_code=500)
 
     return [

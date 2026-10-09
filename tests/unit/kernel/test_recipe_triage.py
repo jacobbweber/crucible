@@ -1,8 +1,6 @@
 """Unit tests for semantic recipe triage and intent compatibility matching."""
 
-from datetime import UTC, datetime
-
-from agent_os.domain.recipe import RecipeMatch, RecipeMetadata, RecipeRecord
+from agent_os.domain.recipe import RecipeMatch
 from agent_os.kernel.default_recipes import (
     _build_warehouse_capture_recipe,
     _build_warehouse_graduation_recipe,

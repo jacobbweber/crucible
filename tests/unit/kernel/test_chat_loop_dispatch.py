@@ -219,4 +219,3 @@ async def test_chat_loop_dispatches_with_context_payload(tmp_path: Path) -> None
     ctx = captured_kwargs["context_payload"]
     assert "Redis on 6379, Postgres on 5432" in ctx
     assert "Will you save that to our warehouse" in ctx
-

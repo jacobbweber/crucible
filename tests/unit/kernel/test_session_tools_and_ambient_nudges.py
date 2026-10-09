@@ -31,9 +31,7 @@ def test_dual_database_session_search(tmp_path: Path) -> None:
 
     # 2. Create old session and backdate it
     s_old = repo.create_session(title="Old Docker Setup")
-    repo.append_turn(
-        s_old.session_id, "user", "How do I restart the Docker daemon safely?", 10
-    )
+    repo.append_turn(s_old.session_id, "user", "How do I restart the Docker daemon safely?", 10)
     repo.append_turn(
         s_old.session_id, "assistant", "Run systemctl restart docker or docker service restart.", 20
     )

@@ -4,7 +4,6 @@ from pathlib import Path
 
 import pytest
 
-from agent_os.domain.recipe import RecipeMetadata, RecipeRecord
 from agent_os.infrastructure.storage.recipe_repo import RecipeRepository
 from agent_os.kernel.recipe_tools import RecipeToolSuite
 

@@ -6,7 +6,6 @@ import pytest
 
 from agent_os.domain.kernel import KernelConfig, UserTurnRequest
 from agent_os.domain.policy import ActionTier
-from agent_os.domain.recipe import RecipeMetadata, RecipeRecord
 from agent_os.domain.tools import ToolDefinition, ToolExecutionResult
 from agent_os.infrastructure.gateway.base import BaseModelAdapter
 from agent_os.infrastructure.security.cipher import derive_master_key
@@ -23,10 +22,12 @@ from agent_os.kernel.master_kernel import AgentOSKernel
 class DummyAdapter(BaseModelAdapter):
     async def complete(self, request):  # type: ignore[no-untyped-def]
         from agent_os.domain.gateway import StreamChunk
+
         yield StreamChunk(delta="Hello telemetry!")
 
     async def stream(self, request):  # type: ignore[no-untyped-def]
         from agent_os.domain.gateway import StreamChunk
+
         yield StreamChunk(delta="Hello telemetry!")
 
 
@@ -62,8 +63,14 @@ async def test_live_telemetry_recording(tmp_path: Path) -> None:
     )
 
     # 1. Verify execute_tool records spans and metrics
-    tool_def = ToolDefinition(name="echo_test", description="Echo", action_tier=ActionTier.STATE_CHANGE)
-    kernel.register_tool("echo_test", lambda msg="hi": ToolExecutionResult(tool_name="echo_test", success=True, output=msg), definition=tool_def)
+    tool_def = ToolDefinition(
+        name="echo_test", description="Echo", action_tier=ActionTier.STATE_CHANGE
+    )
+    kernel.register_tool(
+        "echo_test",
+        lambda msg="hi": ToolExecutionResult(tool_name="echo_test", success=True, output=msg),
+        definition=tool_def,
+    )
 
     res = await kernel.execute_tool("echo_test", {"msg": "telemetry-works"})
     assert res.success
@@ -76,7 +83,9 @@ async def test_live_telemetry_recording(tmp_path: Path) -> None:
 
     # 2. Verify handle_user_turn records spans and metrics
     sess = session_repo.create_session("Telemetry Chat")
-    turn_resp = await kernel.handle_user_turn(UserTurnRequest(session_id=sess.session_id, user_input="Hello Astra"))
+    turn_resp = await kernel.handle_user_turn(
+        UserTurnRequest(session_id=sess.session_id, user_input="Hello Astra")
+    )
     assert "Hello telemetry!" in turn_resp.response_text
 
     chat_spans = telemetry_repo.get_recent_spans(subsystem="kernel.chat", limit=10)

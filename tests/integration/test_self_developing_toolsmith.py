@@ -36,7 +36,9 @@ class MockToolsmithModelAdapter(BaseModelAdapter):
 
         # 1. Capability Evaluator
         if "You are an expert system capability evaluator" in content:
-            resp = json.dumps({"has_capability": False, "missing_domain": "Host Filesystem Operations"})
+            resp = json.dumps(
+                {"has_capability": False, "missing_domain": "Host Filesystem Operations"}
+            )
         # 2. Toolsmith synthesis request
         elif "You are an expert Python tool developer" in content:
             tool_code = (
@@ -68,14 +70,21 @@ class MockToolsmithModelAdapter(BaseModelAdapter):
             }
             resp = json.dumps(brief)
         # 4. Recipe Chamber ReAct execution
-        elif request.messages[-1].role == "tool" or "Observation from" in request.messages[-1].content:
+        elif (
+            request.messages[-1].role == "tool"
+            or "Observation from" in request.messages[-1].content
+        ):
             resp = f"Successfully wrote hello world to {self.target_file_path}."
-        elif "Host System Worker" in str(request.messages[0].content) or "To invoke a tool, emit a JSON block" in str(request.messages[0].content):
-            resp = json.dumps({
-                "thought": f"I need to write 'hello world' to {self.target_file_path} using host_write_file.",
-                "action": "host_write_file",
-                "parameters": {"path": str(self.target_file_path), "content": "hello world"},
-            })
+        elif "Host System Worker" in str(
+            request.messages[0].content
+        ) or "To invoke a tool, emit a JSON block" in str(request.messages[0].content):
+            resp = json.dumps(
+                {
+                    "thought": f"I need to write 'hello world' to {self.target_file_path} using host_write_file.",
+                    "action": "host_write_file",
+                    "parameters": {"path": str(self.target_file_path), "content": "hello world"},
+                }
+            )
         # 5. Front-door companion turn: emit dispatch directive
         elif "Can you create me a file named" in content:
             resp = (
@@ -128,17 +137,26 @@ async def test_end_to_end_host_filesystem_synthesis_and_execution(tmp_path: Path
             p = Path(path)
             p.parent.mkdir(parents=True, exist_ok=True)
             p.write_text(content, encoding="utf-8")
-            return ToolExecutionResult(tool_name="host_write_file", success=True, output=f"Wrote to {path}")
+            return ToolExecutionResult(
+                tool_name="host_write_file", success=True, output=f"Wrote to {path}"
+            )
 
         from agent_os.domain.policy import ActionTier
-        tool_def = ToolDefinition(name=tool_name, description="Host writer", action_tier=ActionTier.STATE_CHANGE)
-        kernel.register_tool(tool_name, fake_host_writer, action_tier=ActionTier.STATE_CHANGE, definition=tool_def)
+
+        tool_def = ToolDefinition(
+            name=tool_name, description="Host writer", action_tier=ActionTier.STATE_CHANGE
+        )
+        kernel.register_tool(
+            tool_name, fake_host_writer, action_tier=ActionTier.STATE_CHANGE, definition=tool_def
+        )
         return [tool_def]
 
     kernel.assembly_pipeline.on_activate_tool = mock_activate
 
     session = kernel.session_repo.create_session("Host Filesystem Test")
-    user_msg = f"Can you create me a file named test123.txt at {target_file}, and in it write hello world"
+    user_msg = (
+        f"Can you create me a file named test123.txt at {target_file}, and in it write hello world"
+    )
     req = UserTurnRequest(session_id=session.session_id, user_input=user_msg)
 
     resp = await kernel.handle_user_turn(req)

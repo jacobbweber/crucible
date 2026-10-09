@@ -7,14 +7,12 @@ from typing import Any
 from agent_os.domain.dispatch import DispatchDecision, DispatchResult
 from agent_os.domain.gateway import ChatMessage, CompletionRequest, estimate_tokens
 from agent_os.domain.ipc import SubJobExecutionRequest
-from agent_os.domain.recipe import RecipeRecord
 from agent_os.domain.runbook import CompiledExecutionPacket, TaskBrief
 from agent_os.infrastructure.gateway.base import BaseModelAdapter
 from agent_os.infrastructure.storage.recipe_repo import RecipeRepository
 from agent_os.kernel.brief_assembler import TaskBriefAssembler
 from agent_os.kernel.recipe_chamber import RecipeChamber
 from agent_os.kernel.recipe_triage import select_best_recipe_match
-
 
 
 class ZeroCatalogDispatcher:
@@ -230,4 +228,3 @@ class ZeroCatalogDispatcher:
             timeout_seconds=timeout_seconds,
             context_payload=context_payload,
         )
-

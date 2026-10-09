@@ -1,8 +1,8 @@
 """Unit tests for workspace management, sandboxed execution, and tool primitives."""
 
-import os
-import pytest
 from pathlib import Path
+
+import pytest
 
 from agent_os.domain.workspace import WorkspaceConfig
 from agent_os.infrastructure.workspace.command_runner import SandboxedCommandRunner
@@ -141,4 +141,3 @@ async def test_workspace_tool_suite_execution(workspace_setup):
     assert rb_res.success is True
     rb_out = json.loads(rb_res.output)
     assert rb_out["rolled_back"] is True
-

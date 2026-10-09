@@ -1,7 +1,8 @@
 """Unit tests for ToolsmithWorker synthesis, pre-flight dry run, and activation."""
 
-import pytest
 from pathlib import Path
+
+import pytest
 
 from agent_os.domain.toolsmith import ToolsmithSynthesisRequest
 from agent_os.domain.workspace import WorkspaceConfig
@@ -65,7 +66,9 @@ async def test_toolsmith_synthesis_and_dry_run(toolsmith_setup):
         assert f"mcp_hub_{proposal.tool_name}" in mounted_names
 
         # 4. Invoke newly mounted tool through supervisor
-        call_res = await supervisor.call_tool(f"mcp_hub_{proposal.tool_name}", {"query": "live_test"})
+        call_res = await supervisor.call_tool(
+            f"mcp_hub_{proposal.tool_name}", {"query": "live_test"}
+        )
         assert call_res.success is True
         assert "live_test" in call_res.output
 

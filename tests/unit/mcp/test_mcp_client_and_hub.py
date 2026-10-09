@@ -1,7 +1,8 @@
 """Unit and integration tests for MCP client supervisor and native FastMCP Hub."""
 
-import pytest
 from pathlib import Path
+
+import pytest
 
 from agent_os.domain.policy import ActionTier
 from agent_os.mcp.client import McpClientSupervisor, McpServerConfig

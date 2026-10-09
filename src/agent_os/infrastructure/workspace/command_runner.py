@@ -4,7 +4,6 @@ import asyncio
 import os
 import re
 import time
-from pathlib import Path
 
 from agent_os.domain.workspace import CommandExecutionResult, WorkspaceConfig
 
@@ -76,7 +75,9 @@ class SandboxedCommandRunner:
         trimmed = command.strip()
         for pat in self.DANGEROUS_PATTERNS:
             if pat.search(trimmed):
-                raise PermissionError(f"Command rejected by safety gate: matches forbidden pattern '{pat.pattern}'")
+                raise PermissionError(
+                    f"Command rejected by safety gate: matches forbidden pattern '{pat.pattern}'"
+                )
 
     async def run(
         self,
@@ -92,7 +93,9 @@ class SandboxedCommandRunner:
         try:
             work_dir.relative_to(self.root_dir)
         except ValueError as exc:
-            raise PermissionError(f"CWD '{relative_cwd}' traverses outside workspace root.") from exc
+            raise PermissionError(
+                f"CWD '{relative_cwd}' traverses outside workspace root."
+            ) from exc
 
         if not work_dir.exists():
             work_dir.mkdir(parents=True, exist_ok=True)
@@ -101,6 +104,7 @@ class SandboxedCommandRunner:
         clean_env = self.build_clean_environment(extra_env)
         start_time = time.monotonic()
 
+        proc: asyncio.subprocess.Process | None = None
         try:
             proc = await asyncio.create_subprocess_shell(
                 command,
@@ -138,10 +142,11 @@ class SandboxedCommandRunner:
 
         except TimeoutError:
             duration_ms = (time.monotonic() - start_time) * 1000.0
-            try:
-                proc.kill()
-            except Exception:
-                pass
+            if proc is not None:
+                try:
+                    proc.kill()
+                except ProcessLookupError:
+                    pass
             return CommandExecutionResult(
                 exit_code=-1,
                 stdout="",

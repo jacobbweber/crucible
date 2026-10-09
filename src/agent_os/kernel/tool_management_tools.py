@@ -13,8 +13,12 @@ from agent_os.domain.tools import (
 from agent_os.mcp.hub import McpHubManager
 
 
-def _p(name: str, type_name: str, desc: str, req: bool = True, default: Any = None) -> ToolParameterSchema:
-    return ToolParameterSchema(name=name, type_name=type_name, description=desc, required=req, default=default)
+def _p(
+    name: str, type_name: str, desc: str, req: bool = True, default: Any = None
+) -> ToolParameterSchema:
+    return ToolParameterSchema(
+        name=name, type_name=type_name, description=desc, required=req, default=default
+    )
 
 
 class ToolManagementSuite:
@@ -36,7 +40,11 @@ class ToolManagementSuite:
                 description="Inspect the Python source code and parameter signature of an existing FastMCP tool.",
                 action_tier=ActionTier.READ,
                 parameters=[
-                    _p("tool_name", "string", "Name of the tool function to inspect (e.g. 'list_drive_contents')."),
+                    _p(
+                        "tool_name",
+                        "string",
+                        "Name of the tool function to inspect (e.g. 'list_drive_contents').",
+                    ),
                 ],
             ),
             ToolDefinition(
@@ -45,7 +53,11 @@ class ToolManagementSuite:
                 action_tier=ActionTier.STATE_CHANGE,
                 parameters=[
                     _p("tool_name", "string", "Name of the tool function to refactor."),
-                    _p("new_code", "string", "Complete updated Python function code decorated with @hub.tool()."),
+                    _p(
+                        "new_code",
+                        "string",
+                        "Complete updated Python function code decorated with @hub.tool().",
+                    ),
                 ],
             ),
             ToolDefinition(
@@ -75,7 +87,9 @@ class ToolManagementSuite:
                 output=f"Source code for tool `{tool_name}`:\n```python\n{code}\n```",
             )
         except Exception as exc:
-            return ToolExecutionResult(tool_name="tool_inspect", success=False, output="", error=str(exc))
+            return ToolExecutionResult(
+                tool_name="tool_inspect", success=False, output="", error=str(exc)
+            )
 
     def tool_refactor(self, tool_name: str, new_code: str) -> ToolExecutionResult:
         """Refactor code of a registered tool with syntax validation."""
@@ -118,7 +132,9 @@ class ToolManagementSuite:
                 output=f"Tool `{tool_name}` refactored and hot-reloaded successfully.",
             )
         except Exception as exc:
-            return ToolExecutionResult(tool_name="tool_refactor", success=False, output="", error=str(exc))
+            return ToolExecutionResult(
+                tool_name="tool_refactor", success=False, output="", error=str(exc)
+            )
 
     def tool_retire(self, tool_name: str) -> ToolExecutionResult:
         """Retire a registered tool."""
@@ -148,4 +164,6 @@ class ToolManagementSuite:
                 output=f"Tool `{tool_name}` retired and removed from active FastMCP registry.",
             )
         except Exception as exc:
-            return ToolExecutionResult(tool_name="tool_retire", success=False, output="", error=str(exc))
+            return ToolExecutionResult(
+                tool_name="tool_retire", success=False, output="", error=str(exc)
+            )

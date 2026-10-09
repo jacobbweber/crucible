@@ -17,8 +17,9 @@ class CapabilityScout:
     async def evaluate_missing_domain(self, task: str, available_tools: list[str]) -> str | None:
         """Dynamically evaluate whether available tools lack capability to fulfill task using LLM."""
         if self.model_adapter:
-            from agent_os.domain.gateway import ChatMessage, CompletionRequest
             import json
+
+            from agent_os.domain.gateway import ChatMessage, CompletionRequest
 
             prompt = (
                 "You are an expert system capability evaluator.\n"
@@ -34,12 +35,15 @@ class CapabilityScout:
                 '  "has_capability": false,\n'
                 '  "missing_domain": "<concise_domain_name_e.g._host_filesystem_or_docker>"\n'
                 "}\n"
-                "If the available tools are fully sufficient, output: {\"has_capability\": true}"
+                'If the available tools are fully sufficient, output: {"has_capability": true}'
             )
             try:
                 req = CompletionRequest(
                     messages=[
-                        ChatMessage(role="system", content="You evaluate tool capabilities and emit structured JSON."),
+                        ChatMessage(
+                            role="system",
+                            content="You evaluate tool capabilities and emit structured JSON.",
+                        ),
                         ChatMessage(role="user", content=prompt),
                     ],
                     temperature=0.0,
@@ -69,7 +73,9 @@ class CapabilityScout:
         tool_names = " ".join(available_tools).lower()
 
         # Check for host filesystem paths (e.g. E:\, C:\, /var, /etc, or host drive mentions)
-        if re.search(r"[a-zA-Z]:[\\/]", task) or any(k in lower_task for k in ["drive", "disk", "desktop", "host machine", "local machine"]):
+        if re.search(r"[a-zA-Z]:[\\/]", task) or any(
+            k in lower_task for k in ["drive", "disk", "desktop", "host machine", "local machine"]
+        ):
             if "host_filesystem" not in tool_names and "host_write" not in tool_names:
                 return "Host Filesystem Operations"
 

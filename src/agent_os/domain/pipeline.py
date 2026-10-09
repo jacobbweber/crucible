@@ -28,7 +28,6 @@ class JobAssemblyRequest(BaseModel):
     context_payload: str = ""
 
 
-
 class PipelineExecutionResult(BaseModel):
     """Outcome of end-to-end job assembly pipeline execution and graduation triage."""
 

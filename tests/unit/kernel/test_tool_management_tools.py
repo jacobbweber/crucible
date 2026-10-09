@@ -17,7 +17,9 @@ def hub_and_suite(tmp_path: Path) -> tuple[McpHubManager, ToolManagementSuite]:
     return hub, suite
 
 
-def test_tool_inspect_refactor_retire(hub_and_suite: tuple[McpHubManager, ToolManagementSuite]) -> None:
+def test_tool_inspect_refactor_retire(
+    hub_and_suite: tuple[McpHubManager, ToolManagementSuite],
+) -> None:
     hub, suite = hub_and_suite
 
     # 1. Register an initial tool
@@ -54,7 +56,7 @@ def sample_tool(path: str = "D:\\\\", verbose: bool = True) -> str:
     bad_code = "def broken(path: str: pass"
     bad_res = suite.tool_refactor("sample_tool", bad_code)
     assert not bad_res.success
-    assert "Syntax error" in bad_res.error
+    assert bad_res.error is not None and "Syntax error" in bad_res.error
 
     # 5. Retire tool
     retire_res = suite.tool_retire("sample_tool")

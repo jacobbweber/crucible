@@ -2,7 +2,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from agent_os.kernel.master_kernel import AgentOSKernel
+    pass
 
 from agent_os.mcp.server import create_mcp_server
 

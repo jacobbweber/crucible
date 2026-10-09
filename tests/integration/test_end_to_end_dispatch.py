@@ -201,5 +201,3 @@ async def test_end_to_end_warehouse_capture_with_context_handoff(tmp_path: Path)
     assert fm is not None
     assert fm.title == "Docker Services Overview"
     assert "postgres:15 on port 5432" in body
-
-

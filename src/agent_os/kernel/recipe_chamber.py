@@ -62,10 +62,17 @@ class RecipeChamber:
 
         target_tools = list(request.packet.target_tools)
         task_lower = request.task.lower()
-        if any(w in task_lower for w in ("save", "write", "capture", "store")) and "warehouse" in task_lower:
-            if "warehouse_write" not in target_tools and ("warehouse_write" in self.tool_definitions or "warehouse_write" in self.tool_tiers):
+        if (
+            any(w in task_lower for w in ("save", "write", "capture", "store"))
+            and "warehouse" in task_lower
+        ):
+            if "warehouse_write" not in target_tools and (
+                "warehouse_write" in self.tool_definitions or "warehouse_write" in self.tool_tiers
+            ):
                 target_tools.append("warehouse_write")
-            if "warehouse_read" not in target_tools and ("warehouse_read" in self.tool_definitions or "warehouse_read" in self.tool_tiers):
+            if "warehouse_read" not in target_tools and (
+                "warehouse_read" in self.tool_definitions or "warehouse_read" in self.tool_tiers
+            ):
                 target_tools.append("warehouse_read")
 
         # 3. Construct runner execution request
@@ -97,7 +104,6 @@ class RecipeChamber:
             timeout_seconds=request.timeout_seconds,
             tools=tools,
         )
-
 
         # 3. Run execution with timing
         start_time = perf_counter()

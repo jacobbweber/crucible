@@ -60,7 +60,6 @@ def extract_tool_directives(text: str) -> list[tuple[str, dict[str, Any]]]:
     return results
 
 
-
 class CompanionChatLoop:
     """Coordinates turn streaming, prompt assembly, and sliding window persistence."""
 
@@ -215,13 +214,17 @@ class CompanionChatLoop:
                         q: asyncio.Queue[str] = asyncio.Queue()
                         seen_status: set[str] = set()
                         sig = inspect.signature(self.job_dispatcher)
-                        var_kw = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values())
+                        var_kw = any(
+                            p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()
+                        )
                         kwargs: dict[str, Any] = {}
                         if var_kw or "on_status" in sig.parameters:
                             kwargs["on_status"] = q.put_nowait
                         if var_kw or "context_payload" in sig.parameters:
                             kwargs["context_payload"] = ctx_payload
-                        fut = asyncio.create_task(self.job_dispatcher(self.session_id, task, **kwargs))
+                        fut = asyncio.create_task(
+                            self.job_dispatcher(self.session_id, task, **kwargs)
+                        )
 
                         while not fut.done():
                             try:
@@ -251,8 +254,9 @@ class CompanionChatLoop:
 
                         yield StreamTurnEvent(event_type="job_dispatched", dispatched_job=job_res)
                     except Exception as exc:
-                        yield StreamTurnEvent(event_type="error", error_message=f"Job dispatch error: {exc}")
-
+                        yield StreamTurnEvent(
+                            event_type="error", error_message=f"Job dispatch error: {exc}"
+                        )
 
             if self.tool_dispatcher:
                 tools = extract_tool_directives(accumulated_text)

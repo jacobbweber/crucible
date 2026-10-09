@@ -343,9 +343,9 @@ async def test_recipe_chamber_assembles_context_and_validates_tools(tmp_path: Pa
     captured_requests = []
 
     class CapturingRunner(NativeRunner):
-        async def execute(self, req):
-            captured_requests.append(req)
-            return await super().execute(req)
+        async def execute(self, request):
+            captured_requests.append(request)
+            return await super().execute(request)
 
     adapter = MockModelAdapter(responses=["Successfully saved note to warehouse."])
     runner = CapturingRunner(
@@ -386,4 +386,3 @@ async def test_recipe_chamber_assembles_context_and_validates_tools(tmp_path: Pa
     tool_names = [t.name for t in req.tools]
     assert "warehouse_write" in tool_names
     assert "warehouse_read" in tool_names
-

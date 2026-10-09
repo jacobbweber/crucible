@@ -48,4 +48,3 @@ def test_ensure_default_recipes_seeds_catalog(tmp_path: Path) -> None:
     # Idempotent re-run
     ensure_default_recipes(repo)
     assert len(repo.list_recipes()) == 6
-

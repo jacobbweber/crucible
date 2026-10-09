@@ -14,8 +14,12 @@ from agent_os.infrastructure.workspace.command_runner import SandboxedCommandRun
 from agent_os.infrastructure.workspace.manager import WorkspaceManager
 
 
-def _p(name: str, type_name: str, desc: str, req: bool = True, default: Any = None) -> ToolParameterSchema:
-    return ToolParameterSchema(name=name, type_name=type_name, description=desc, required=req, default=default)
+def _p(
+    name: str, type_name: str, desc: str, req: bool = True, default: Any = None
+) -> ToolParameterSchema:
+    return ToolParameterSchema(
+        name=name, type_name=type_name, description=desc, required=req, default=default
+    )
 
 
 class WorkspaceToolSuite:
@@ -92,67 +96,118 @@ class WorkspaceToolSuite:
         try:
             entries = self.manager.list_tree(relative_path=relative_path, max_depth=max_depth)
             output = [
-                {"path": e.relative_path, "is_dir": e.is_dir, "size_bytes": e.size_bytes, "modified_at": e.modified_at}
+                {
+                    "path": e.relative_path,
+                    "is_dir": e.is_dir,
+                    "size_bytes": e.size_bytes,
+                    "modified_at": e.modified_at,
+                }
                 for e in entries
             ]
-            return ToolExecutionResult(tool_name="workspace_tree", success=True, output=json.dumps({"entries": output}))
+            return ToolExecutionResult(
+                tool_name="workspace_tree", success=True, output=json.dumps({"entries": output})
+            )
         except Exception as exc:
-            return ToolExecutionResult(tool_name="workspace_tree", success=False, output="", error=str(exc))
+            return ToolExecutionResult(
+                tool_name="workspace_tree", success=False, output="", error=str(exc)
+            )
 
-    def workspace_read(self, relative_path: str, start_line: int = 1, line_count: int = 100) -> ToolExecutionResult:
+    def workspace_read(
+        self, relative_path: str, start_line: int = 1, line_count: int = 100
+    ) -> ToolExecutionResult:
         """Read lines from a workspace file with pagination."""
         try:
-            content, total, b_read = self.manager.read_file(relative_path, start_line=start_line, line_count=line_count)
+            content, total, b_read = self.manager.read_file(
+                relative_path, start_line=start_line, line_count=line_count
+            )
             return ToolExecutionResult(
                 tool_name="workspace_read",
                 success=True,
-                output=json.dumps({
-                    "path": relative_path, "content": content, "start_line": start_line,
-                    "line_count": len(content.splitlines()), "total_lines": total, "bytes_read": b_read,
-                }),
+                output=json.dumps(
+                    {
+                        "path": relative_path,
+                        "content": content,
+                        "start_line": start_line,
+                        "line_count": len(content.splitlines()),
+                        "total_lines": total,
+                        "bytes_read": b_read,
+                    }
+                ),
             )
         except Exception as exc:
-            return ToolExecutionResult(tool_name="workspace_read", success=False, output="", error=str(exc))
+            return ToolExecutionResult(
+                tool_name="workspace_read", success=False, output="", error=str(exc)
+            )
 
-    def workspace_write(self, relative_path: str, content: str, overwrite: bool = False) -> ToolExecutionResult:
+    def workspace_write(
+        self, relative_path: str, content: str, overwrite: bool = False
+    ) -> ToolExecutionResult:
         """Write content to a workspace file with rollback snapshotting."""
         try:
             snap_id = self.manager.write_file(relative_path, content, overwrite=overwrite)
             return ToolExecutionResult(
                 tool_name="workspace_write",
                 success=True,
-                output=json.dumps({"path": relative_path, "snapshot_id": snap_id, "bytes_written": len(content.encode("utf-8"))}),
+                output=json.dumps(
+                    {
+                        "path": relative_path,
+                        "snapshot_id": snap_id,
+                        "bytes_written": len(content.encode("utf-8")),
+                    }
+                ),
             )
         except Exception as exc:
-            return ToolExecutionResult(tool_name="workspace_write", success=False, output="", error=str(exc))
+            return ToolExecutionResult(
+                tool_name="workspace_write", success=False, output="", error=str(exc)
+            )
 
-    def workspace_patch(self, relative_path: str, target_content: str, replacement_content: str) -> ToolExecutionResult:
+    def workspace_patch(
+        self, relative_path: str, target_content: str, replacement_content: str
+    ) -> ToolExecutionResult:
         """Perform exact single-block replacement in a workspace file."""
         try:
-            snap_id, matches = self.manager.patch_file(relative_path, target_content, replacement_content)
+            snap_id, matches = self.manager.patch_file(
+                relative_path, target_content, replacement_content
+            )
             return ToolExecutionResult(
                 tool_name="workspace_patch",
                 success=True,
-                output=json.dumps({"path": relative_path, "snapshot_id": snap_id, "matches_replaced": matches}),
+                output=json.dumps(
+                    {"path": relative_path, "snapshot_id": snap_id, "matches_replaced": matches}
+                ),
             )
         except Exception as exc:
-            return ToolExecutionResult(tool_name="workspace_patch", success=False, output="", error=str(exc))
+            return ToolExecutionResult(
+                tool_name="workspace_patch", success=False, output="", error=str(exc)
+            )
 
-    async def workspace_command(self, command: str, relative_cwd: str = ".", timeout_seconds: int = 60) -> ToolExecutionResult:
+    async def workspace_command(
+        self, command: str, relative_cwd: str = ".", timeout_seconds: int = 60
+    ) -> ToolExecutionResult:
         """Execute a shell command within the workspace with secret scrubbing."""
         try:
-            res = await self.runner.run(command, relative_cwd=relative_cwd, timeout_seconds=timeout_seconds)
+            res = await self.runner.run(
+                command, relative_cwd=relative_cwd, timeout_seconds=timeout_seconds
+            )
             return ToolExecutionResult(
                 tool_name="workspace_command",
                 success=res.exit_code == 0,
-                output=json.dumps({
-                    "command": command, "exit_code": res.exit_code, "stdout": res.stdout,
-                    "stderr": res.stderr, "duration_ms": res.duration_ms, "timed_out": res.timed_out,
-                }),
+                output=json.dumps(
+                    {
+                        "command": command,
+                        "exit_code": res.exit_code,
+                        "stdout": res.stdout,
+                        "stderr": res.stderr,
+                        "duration_ms": res.duration_ms,
+                        "timed_out": res.timed_out,
+                    }
+                ),
                 error=res.stderr if res.exit_code != 0 else None,
             )
         except Exception as exc:
-            return ToolExecutionResult(tool_name="workspace_command", success=False, output="", error=str(exc))
+            return ToolExecutionResult(
+                tool_name="workspace_command", success=False, output="", error=str(exc)
+            )
 
     def workspace_rollback(self, snapshot_id: str) -> ToolExecutionResult:
         """Rollback a file modification using a snapshot ID."""
@@ -164,12 +219,16 @@ class WorkspaceToolSuite:
                 output=json.dumps({"snapshot_id": snapshot_id, "rolled_back": success}),
             )
         except Exception as exc:
-            return ToolExecutionResult(tool_name="workspace_rollback", success=False, output="", error=str(exc))
+            return ToolExecutionResult(
+                tool_name="workspace_rollback", success=False, output="", error=str(exc)
+            )
 
     async def execute(self, tool_name: str, params: dict[str, Any]) -> ToolExecutionResult:
         """Route and execute a workspace tool call."""
         fn = getattr(self, tool_name, None)
         if not fn:
-            return ToolExecutionResult(tool_name=tool_name, success=False, output="", error=f"Unknown tool: {tool_name}")
+            return ToolExecutionResult(
+                tool_name=tool_name, success=False, output="", error=f"Unknown tool: {tool_name}"
+            )
         res = fn(**params)
         return await res if inspect.iscoroutine(res) else res

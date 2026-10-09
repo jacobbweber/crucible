@@ -14,8 +14,12 @@ from agent_os.domain.tools import (
 from agent_os.infrastructure.storage.recipe_repo import RecipeRepository
 
 
-def _p(name: str, type_name: str, desc: str, req: bool = True, default: Any = None) -> ToolParameterSchema:
-    return ToolParameterSchema(name=name, type_name=type_name, description=desc, required=req, default=default)
+def _p(
+    name: str, type_name: str, desc: str, req: bool = True, default: Any = None
+) -> ToolParameterSchema:
+    return ToolParameterSchema(
+        name=name, type_name=type_name, description=desc, required=req, default=default
+    )
 
 
 class RecipeToolSuite:
@@ -32,7 +36,13 @@ class RecipeToolSuite:
                 description="List available recipe playbooks, optionally filtering by semantic tag.",
                 action_tier=ActionTier.READ,
                 parameters=[
-                    _p("tag", "string", "Optional tag to filter recipes (e.g. 'filesystem', 'research').", False, ""),
+                    _p(
+                        "tag",
+                        "string",
+                        "Optional tag to filter recipes (e.g. 'filesystem', 'research').",
+                        False,
+                        "",
+                    ),
                 ],
             ),
             ToolDefinition(
@@ -40,7 +50,11 @@ class RecipeToolSuite:
                 description="Retrieve full details, required tools, and runbook instructions for a recipe by ID.",
                 action_tier=ActionTier.READ,
                 parameters=[
-                    _p("recipe_id", "string", "Unique identifier of the recipe (e.g. 'host_filesystem_inspection')."),
+                    _p(
+                        "recipe_id",
+                        "string",
+                        "Unique identifier of the recipe (e.g. 'host_filesystem_inspection').",
+                    ),
                 ],
             ),
             ToolDefinition(
@@ -50,12 +64,42 @@ class RecipeToolSuite:
                 parameters=[
                     _p("recipe_id", "string", "Unique identifier for the recipe."),
                     _p("name", "string", "Human-readable name of the playbook."),
-                    _p("description", "string", "Detailed operational description and purpose of the recipe."),
-                    _p("required_tools", "string", "Comma-separated list of required tool names (e.g. 'list_drive_contents')."),
-                    _p("tags", "string", "Comma-separated semantic intent tags (e.g. 'filesystem,drive,list')."),
-                    _p("body", "string", "Runbook instructions, operational steps, or verification criteria.", False, ""),
-                    _p("execution_engine", "string", "Execution engine ('react', 'stategraph', 'pev').", False, "react"),
-                    _p("target_model_tier", "string", "Model tier ('fast', 'reasoning', 'coding').", False, "fast"),
+                    _p(
+                        "description",
+                        "string",
+                        "Detailed operational description and purpose of the recipe.",
+                    ),
+                    _p(
+                        "required_tools",
+                        "string",
+                        "Comma-separated list of required tool names (e.g. 'list_drive_contents').",
+                    ),
+                    _p(
+                        "tags",
+                        "string",
+                        "Comma-separated semantic intent tags (e.g. 'filesystem,drive,list').",
+                    ),
+                    _p(
+                        "body",
+                        "string",
+                        "Runbook instructions, operational steps, or verification criteria.",
+                        False,
+                        "",
+                    ),
+                    _p(
+                        "execution_engine",
+                        "string",
+                        "Execution engine ('react', 'stategraph', 'pev').",
+                        False,
+                        "react",
+                    ),
+                    _p(
+                        "target_model_tier",
+                        "string",
+                        "Model tier ('fast', 'reasoning', 'coding').",
+                        False,
+                        "fast",
+                    ),
                     _p("timeout_seconds", "integer", "Timeout in seconds.", False, 60),
                 ],
             ),
@@ -75,10 +119,16 @@ class RecipeToolSuite:
             records = self.recipe_repo.list_recipes()
             filter_tag = tag.strip().lower()
             if filter_tag:
-                records = [r for r in records if any(filter_tag in t.lower() for t in r.metadata.tags)]
+                records = [
+                    r for r in records if any(filter_tag in t.lower() for t in r.metadata.tags)
+                ]
 
             if not records:
-                msg = f"No recipes found matching tag '{tag}'." if tag else "No recipes found in library."
+                msg = (
+                    f"No recipes found matching tag '{tag}'."
+                    if tag
+                    else "No recipes found in library."
+                )
                 return ToolExecutionResult(tool_name="recipe_list", success=True, output=msg)
 
             lines = [f"Found {len(records)} recipe playbook(s):"]
@@ -89,9 +139,13 @@ class RecipeToolSuite:
                     f"- `{r.metadata.recipe_id}`: {r.metadata.name} | Engine: {r.metadata.execution_engine} "
                     f"| Tools: [{tools_str}] | Tags: [{tags_str}]"
                 )
-            return ToolExecutionResult(tool_name="recipe_list", success=True, output="\n".join(lines))
+            return ToolExecutionResult(
+                tool_name="recipe_list", success=True, output="\n".join(lines)
+            )
         except Exception as exc:
-            return ToolExecutionResult(tool_name="recipe_list", success=False, output="", error=str(exc))
+            return ToolExecutionResult(
+                tool_name="recipe_list", success=False, output="", error=str(exc)
+            )
 
     def recipe_get(self, recipe_id: str) -> ToolExecutionResult:
         """Get recipe details by ID."""
@@ -99,7 +153,10 @@ class RecipeToolSuite:
             r = self.recipe_repo.get_recipe(recipe_id)
             if not r:
                 return ToolExecutionResult(
-                    tool_name="recipe_get", success=False, output="", error=f"Recipe '{recipe_id}' not found."
+                    tool_name="recipe_get",
+                    success=False,
+                    output="",
+                    error=f"Recipe '{recipe_id}' not found.",
                 )
 
             data = {
@@ -119,7 +176,9 @@ class RecipeToolSuite:
                 tool_name="recipe_get", success=True, output=json.dumps(data, indent=2)
             )
         except Exception as exc:
-            return ToolExecutionResult(tool_name="recipe_get", success=False, output="", error=str(exc))
+            return ToolExecutionResult(
+                tool_name="recipe_get", success=False, output="", error=str(exc)
+            )
 
     def recipe_upsert(
         self,
@@ -172,7 +231,9 @@ class RecipeToolSuite:
                 output=f"Recipe '{recipe_id}' saved successfully with {len(t_list)} tools and {len(tag_list)} tags.",
             )
         except Exception as exc:
-            return ToolExecutionResult(tool_name="recipe_upsert", success=False, output="", error=str(exc))
+            return ToolExecutionResult(
+                tool_name="recipe_upsert", success=False, output="", error=str(exc)
+            )
 
     def recipe_delete(self, recipe_id: str) -> ToolExecutionResult:
         """Delete recipe by ID."""
@@ -180,10 +241,17 @@ class RecipeToolSuite:
             ok = self.recipe_repo.delete_recipe(recipe_id)
             if ok:
                 return ToolExecutionResult(
-                    tool_name="recipe_delete", success=True, output=f"Recipe '{recipe_id}' deleted successfully."
+                    tool_name="recipe_delete",
+                    success=True,
+                    output=f"Recipe '{recipe_id}' deleted successfully.",
                 )
             return ToolExecutionResult(
-                tool_name="recipe_delete", success=False, output="", error=f"Recipe '{recipe_id}' not found."
+                tool_name="recipe_delete",
+                success=False,
+                output="",
+                error=f"Recipe '{recipe_id}' not found.",
             )
         except Exception as exc:
-            return ToolExecutionResult(tool_name="recipe_delete", success=False, output="", error=str(exc))
+            return ToolExecutionResult(
+                tool_name="recipe_delete", success=False, output="", error=str(exc)
+            )

@@ -64,7 +64,10 @@ def is_recipe_compatible(task: str, recipe: RecipeRecord) -> bool:
         health_primary = {"health", "telemetry", "vital", "vitals", "rca", "incident"}
         if not (task_words & health_primary):
             return False
-        if any(w in task_words for w in ("file", "files", "folder", "directory", "dir", "list", "read", "write")):
+        if any(
+            w in task_words
+            for w in ("file", "files", "folder", "directory", "dir", "list", "read", "write")
+        ):
             return False
 
     # 4. Docker check: task must target containers / docker

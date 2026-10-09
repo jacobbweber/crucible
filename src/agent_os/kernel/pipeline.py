@@ -114,29 +114,43 @@ class JobAssemblyPipeline:
             if missing_domain:
                 if self.toolsmith:
                     if on_status is not None:
-                        res = on_status(f"Synthesizing capability for '{missing_domain}' in scratch workspace...")
+                        res = on_status(
+                            f"Synthesizing capability for '{missing_domain}' in scratch workspace..."
+                        )
                         if inspect.iscoroutine(res):
                             await res
                     from agent_os.domain.toolsmith import ToolsmithSynthesisRequest
 
-                    synth_req = ToolsmithSynthesisRequest(task=request.task, domain=missing_domain, available_tools=request.available_tools)
+                    synth_req = ToolsmithSynthesisRequest(
+                        task=request.task,
+                        domain=missing_domain,
+                        available_tools=request.available_tools,
+                    )
                     prop = await self.toolsmith.synthesize_and_verify(synth_req)
                     staged_path = prop.staged_path
 
                     if prop.verified and self.on_activate_tool is not None:
                         if on_status is not None:
-                            res = on_status(f"Verified tool '{prop.tool_name}'. Mounting into live runtime...")
+                            res = on_status(
+                                f"Verified tool '{prop.tool_name}'. Mounting into live runtime..."
+                            )
                             if inspect.iscoroutine(res):
                                 await res
                         try:
                             new_tools = await self.on_activate_tool(prop.tool_name)
                             mounted_tool_names = [t.name for t in new_tools]
-                            clean_names = [t.name.removeprefix("mcp_hub_") for t in new_tools if t.name.startswith("mcp_hub_")]
+                            clean_names = [
+                                t.name.removeprefix("mcp_hub_")
+                                for t in new_tools
+                                if t.name.startswith("mcp_hub_")
+                            ]
                             all_new = mounted_tool_names + clean_names
                             updated_tools = list(set(request.available_tools + all_new))
 
                             if on_status is not None:
-                                res = on_status(f"Executing directive with active tool '{prop.tool_name}'...")
+                                res = on_status(
+                                    f"Executing directive with active tool '{prop.tool_name}'..."
+                                )
                                 if inspect.iscoroutine(res):
                                     await res
 
@@ -147,7 +161,9 @@ class JobAssemblyPipeline:
                                 timeout_seconds=request.timeout_seconds,
                                 context_payload=request.context_payload,
                             )
-                            self.signaler.signal_completion(request.session_id, dispatch_res.envelope)
+                            self.signaler.signal_completion(
+                                request.session_id, dispatch_res.envelope
+                            )
                             if dispatch_res.envelope.status == "completed":
                                 self._auto_graduate_synthesized_tool(prop, missing_domain)
                             return PipelineExecutionResult(
@@ -159,7 +175,9 @@ class JobAssemblyPipeline:
                             )
                         except Exception as mount_err:
                             if on_status is not None:
-                                res = on_status(f"Tool mounting encountered: {mount_err}. Falling back to proposal.")
+                                res = on_status(
+                                    f"Tool mounting encountered: {mount_err}. Falling back to proposal."
+                                )
                                 if inspect.iscoroutine(res):
                                     await res
 
@@ -172,10 +190,15 @@ class JobAssemblyPipeline:
                         summary = f"Tool synthesis for '{missing_domain}' failed dry run: {prop.error_message}"
                 else:
                     if on_status is not None:
-                        res = on_status(f"Detected missing capability '{missing_domain}'. Staging proposal...")
+                        res = on_status(
+                            f"Detected missing capability '{missing_domain}'. Staging proposal..."
+                        )
                         if inspect.iscoroutine(res):
                             await res
-                    staged_path = self.capability_scout.stage_mcp_proposal(request.task, missing_domain)
+                    assert self.capability_scout is not None
+                    staged_path = self.capability_scout.stage_mcp_proposal(
+                        request.task, missing_domain
+                    )
                     summary = f"Missing tool for '{missing_domain}'. Prepared capability proposal in {staged_path}."
 
                 from agent_os.domain.dispatch import DispatchDecision, DispatchResult
@@ -201,7 +224,6 @@ class JobAssemblyPipeline:
                     flagged_for_graduation=False,
                 )
 
-
         # 2. Dispatch execution via ZeroCatalogDispatcher
         dispatch_res = await self.dispatcher.dispatch_task(
             request.session_id,
@@ -210,7 +232,6 @@ class JobAssemblyPipeline:
             timeout_seconds=request.timeout_seconds,
             context_payload=request.context_payload,
         )
-
 
         # 3. Channel Signaling
         self.signaler.signal_completion(request.session_id, dispatch_res.envelope)
@@ -264,11 +285,30 @@ class JobAssemblyPipeline:
         t_name = getattr(prop, "tool_name", "")
         if not t_name:
             return None
-        is_fs = any(k in t_name.lower() or k in domain.lower() for k in ("drive", "dir", "file", "filesystem"))
+        is_fs = any(
+            k in t_name.lower() or k in domain.lower()
+            for k in ("drive", "dir", "file", "filesystem")
+        )
         if is_fs:
-            rec_id, name = "host_filesystem_inspection", "Host Filesystem Directory & File Inspection"
+            rec_id, name = (
+                "host_filesystem_inspection",
+                "Host Filesystem Directory & File Inspection",
+            )
             desc = "Enumerate, list, and inspect directories, drives, folders, and files on the host filesystem."
-            tags = ["filesystem", "directory", "dir", "drive", "folder", "list", "files", "contents", "enumerate", "inspect", "path", "host"]
+            tags = [
+                "filesystem",
+                "directory",
+                "dir",
+                "drive",
+                "folder",
+                "list",
+                "files",
+                "contents",
+                "enumerate",
+                "inspect",
+                "path",
+                "host",
+            ]
             body = (
                 "# Host Filesystem Directory & File Inspection\n\n"
                 "## Goal\nEnumerate or inspect files, drives, and directories on the local host machine.\n\n"
@@ -282,17 +322,24 @@ class JobAssemblyPipeline:
             slug = re.sub(r"[^a-zA-Z0-9_]+", "_", clean_dom.lower()).strip("_")
             rec_id, name = f"recipe_{slug}", f"{clean_dom} Automation"
             desc = getattr(prop, "description", None) or f"Automated operations for {clean_dom}."
-            domain_words = [w.lower() for w in re.findall(r"\w+", f"{clean_dom} {t_name}") if len(w) > 2]
+            domain_words = [
+                w.lower() for w in re.findall(r"\w+", f"{clean_dom} {t_name}") if len(w) > 2
+            ]
             tags = list(set(domain_words + ["recipe", "auto_graduated", "automated"]))
             body = f"# {name}\n\n## Goal\nExecute {clean_dom} directives using `{t_name}`.\n"
 
         rec = RecipeRecord(
             metadata=RecipeMetadata(
-                recipe_id=rec_id, name=name, description=desc,
-                execution_engine="react", target_model_tier="reasoning",
-                tags=tags, required_tools=[t_name], timeout_seconds=300,
+                recipe_id=rec_id,
+                name=name,
+                description=desc,
+                execution_engine="react",
+                target_model_tier="reasoning",
+                tags=tags,
+                required_tools=[t_name],
+                timeout_seconds=300,
             ),
-            markdown_path=f"recipes/{rec_id}.md", body=body,
+            markdown_path=f"recipes/{rec_id}.md",
+            body=body,
         )
         return self.recipe_repo.upsert_recipe(rec)
-

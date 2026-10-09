@@ -310,6 +310,7 @@ async def test_stress_health_audit_and_rca_staging_end_to_end(stress_environment
     health_res = await kernel.execute_tool("telemetry_get_health_summary", {"hours": 24})
     assert health_res.success is True
     import json
+
     data = json.loads(health_res.output)
     assert data["health_score"] < 80
     assert len(data["findings"]) >= 1

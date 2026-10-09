@@ -1,7 +1,8 @@
 """Integration test verifying dynamic MCP server mounting into AgentOSKernel."""
 
-import pytest
 from pathlib import Path
+
+import pytest
 
 from agent_os.domain.gateway import CompletionRequest, StreamChunk
 from agent_os.domain.kernel import KernelConfig
@@ -64,6 +65,7 @@ async def test_mount_mcp_hub_into_kernel(kernel_fixture):
 
         # 2. Mount Hub via mount_mcp_server
         import sys
+
         config = McpServerConfig(
             server_id="hub",
             transport="stdio",

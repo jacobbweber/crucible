@@ -76,7 +76,10 @@ def {tool_name}(query: str = "status") -> str:
         try:
             req = CompletionRequest(
                 messages=[
-                    ChatMessage(role="system", content="You emit structured FastMCP tool specifications in JSON."),
+                    ChatMessage(
+                        role="system",
+                        content="You emit structured FastMCP tool specifications in JSON.",
+                    ),
                     ChatMessage(role="user", content=prompt),
                 ],
                 temperature=0.0,
@@ -100,7 +103,9 @@ def {tool_name}(query: str = "status") -> str:
 
     async def synthesize_and_verify(self, request: ToolsmithSynthesisRequest) -> ToolsmithProposal:
         """Synthesize a tool, run a mandatory pre-flight dry run, and stage in 00_Inbox."""
-        tool_name, desc, code, dry_run_args = await self._generate_spec(request.task, request.domain)
+        tool_name, desc, code, dry_run_args = await self._generate_spec(
+            request.task, request.domain
+        )
 
         # 1. Prepare ephemeral dry-run test harness
         fn_match = re.search(r"def\s+([a-zA-Z0-9_]+)\s*\(", code)
@@ -209,10 +214,9 @@ updated: {now}
         """Lookup proposal by tool name."""
         return self._proposals.get(tool_name)
 
-    def compile_tool_function(
-        self, proposal: ToolsmithProposal
-    ) -> tuple[Any, ToolDefinition]:
+    def compile_tool_function(self, proposal: ToolsmithProposal) -> tuple[Any, ToolDefinition]:
         """Compile a verified tool proposal into an in-process callable and ToolDefinition."""
+
         class _HubShim:
             def tool(self, *args: Any, **kwargs: Any) -> Any:
                 return lambda fn: fn
@@ -224,12 +228,17 @@ updated: {now}
             raise ValueError(f"Callable '{proposal.tool_name}' not found in compiled code.")
 
         import inspect
+
         sig = inspect.signature(fn)
         params: list[ToolParameterSchema] = []
         for p_name, param in sig.parameters.items():
             req = param.default is inspect.Parameter.empty
             d_val = None if req else param.default
-            p_desc = f"Target {p_name} parameter (e.g. drive letter or path)" if "path" in p_name else p_name
+            p_desc = (
+                f"Target {p_name} parameter (e.g. drive letter or path)"
+                if "path" in p_name
+                else p_name
+            )
             params.append(
                 ToolParameterSchema(
                     name=p_name,

@@ -28,6 +28,7 @@ if __name__ == "__main__":
 def _find_tool_slice(code: str, tool_name: str) -> tuple[int, int] | None:
     """Locate the starting (including decorator) and ending line of a tool function using AST."""
     import ast
+
     try:
         tree = ast.parse(code)
     except SyntaxError:
@@ -63,7 +64,7 @@ class McpHubManager:
         if not span:
             return None
         lines = code.splitlines(keepends=True)
-        return "".join(lines[span[0]:span[1]])
+        return "".join(lines[span[0] : span[1]])
 
     def refactor_tool_code(self, tool_name: str, new_code: str) -> bool:
         """Replace the source code of an existing tool in hub_server.py."""
@@ -74,7 +75,7 @@ class McpHubManager:
             return False
         lines = code.splitlines(keepends=True)
         clean_new = new_code.strip() + "\n\n"
-        lines[span[0]:span[1]] = [clean_new]
+        lines[span[0] : span[1]] = [clean_new]
         self.server_script.write_text("".join(lines), encoding="utf-8")
         return True
 
@@ -87,7 +88,7 @@ class McpHubManager:
         if not span:
             return False
         lines = code.splitlines(keepends=True)
-        del lines[span[0]:span[1]]
+        del lines[span[0] : span[1]]
         self.server_script.write_text("".join(lines), encoding="utf-8")
         return True
 
@@ -131,11 +132,12 @@ class McpHubManager:
         return await self.start_hub(supervisor)
 
     def load_persisted_tools(self) -> dict[str, tuple[Any, ToolDefinition]]:
-        """Load callable tools and ToolDefinitions registered in hub_server.py without stdio overhead."""
+        """Load callable tools and ToolDefinitions from hub_server.py without stdio overhead."""
         if not self.server_script.exists():
             return {}
         try:
             import inspect
+
             from agent_os.domain.policy import ActionTier
             from agent_os.domain.tools import ToolDefinition, ToolParameterSchema
 
@@ -151,13 +153,21 @@ class McpHubManager:
                     continue
                 fn = getattr(tool_obj, "fn", None)
                 if callable(fn):
-                    desc = getattr(tool_obj, "description", None) or inspect.getdoc(fn) or f"Synthesized tool: {name}"
+                    desc = (
+                        getattr(tool_obj, "description", None)
+                        or inspect.getdoc(fn)
+                        or f"Synthesized tool: {name}"
+                    )
                     sig = inspect.signature(fn)
                     params: list[ToolParameterSchema] = []
                     for p_name, param in sig.parameters.items():
                         req = param.default is inspect.Parameter.empty
                         d_val = None if req else param.default
-                        p_desc = f"Target {p_name} parameter (e.g. drive letter or path)" if "path" in p_name else p_name
+                        p_desc = (
+                            f"Target {p_name} parameter (e.g. drive letter or path)"
+                            if "path" in p_name
+                            else p_name
+                        )
                         params.append(
                             ToolParameterSchema(
                                 name=p_name,
@@ -177,4 +187,3 @@ class McpHubManager:
             return loaded
         except Exception:
             return {}
-

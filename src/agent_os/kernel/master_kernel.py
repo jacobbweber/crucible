@@ -1,6 +1,5 @@
 """Master orchestration kernel coordinating all agent-os runtime subsystems."""
 
-import inspect
 from collections.abc import AsyncIterator, Callable, Coroutine
 from datetime import datetime
 from typing import Any
@@ -56,7 +55,6 @@ from agent_os.mcp.hub import McpHubManager
 
 
 class AgentOSKernel:
-
     """Master orchestration kernel integrating conversational front-door and sandboxed workers."""
 
     def __init__(
@@ -74,67 +72,101 @@ class AgentOSKernel:
         telemetry_repo: TelemetryRepository | None = None,
     ) -> None:
         self.config, self.session_repo, self.facts_repo = config, session_repo, facts_repo
-        self.recipe_repo, self.education_repo, self.vault_repo = recipe_repo, education_repo, vault_repo
+        self.recipe_repo, self.education_repo, self.vault_repo = (
+            recipe_repo,
+            education_repo,
+            vault_repo,
+        )
         self.wiki_store, self.model_adapter = wiki_store, model_adapter
         self.routine_repo = routine_repo or RoutineRepository(session_repo.db_path)
-        self.telemetry_repo = telemetry_repo or TelemetryRepository(session_repo.db_path.parent / "telemetry.db")
-        self.rca_stager, self.collector, self.signaler = RcaProposalStager(wiki_store=wiki_store), TelemetryCollector(self.telemetry_repo), CompletionSignaler()
+        self.telemetry_repo = telemetry_repo or TelemetryRepository(
+            session_repo.db_path.parent / "telemetry.db"
+        )
+        self.rca_stager, self.collector, self.signaler = (
+            RcaProposalStager(wiki_store=wiki_store),
+            TelemetryCollector(self.telemetry_repo),
+            CompletionSignaler(),
+        )
         self.semaphore = semaphore or InferenceSemaphore(max_concurrency=config.max_concurrency)
         self.policy_gate = ToolPolicyGate(approval_mode=ApprovalMode(config.approval_mode))
         self.credential_proxy = CredentialProxyGate(vault_repo=vault_repo)
         self.srs_engine = SRSEngine()
         self.wiki_tools = WikiToolSuite(wiki_store=wiki_store)
-        self.education_tools = EducationToolSuite(education_repo=education_repo, srs_engine=self.srs_engine)
+        self.education_tools = EducationToolSuite(
+            education_repo=education_repo, srs_engine=self.srs_engine
+        )
         self.session_tools = SessionToolSuite(session_repo=session_repo)
         self.telemetry_tools = TelemetryToolSuite(
             self.telemetry_repo, self.rca_stager, collector=self.collector, signaler=self.signaler
         )
         ws_root = session_repo.db_path.parent / "workspace"
         ws_cfg = WorkspaceConfig(root_dir=ws_root)
-        self.workspace_manager, self.workspace_runner = WorkspaceManager(ws_cfg), SandboxedCommandRunner(ws_cfg)
+        self.workspace_manager, self.workspace_runner = (
+            WorkspaceManager(ws_cfg),
+            SandboxedCommandRunner(ws_cfg),
+        )
         self.workspace_tools = WorkspaceToolSuite(self.workspace_manager, self.workspace_runner)
         self.mcp_supervisor = McpClientSupervisor()
         self.mcp_hub = McpHubManager(ws_root)
         self.recipe_tools = RecipeToolSuite(recipe_repo=recipe_repo)
-        self.tool_mgmt_tools = ToolManagementSuite(mcp_hub=self.mcp_hub, on_reload=self._register_persisted_hub_tools)
+        self.tool_mgmt_tools = ToolManagementSuite(
+            mcp_hub=self.mcp_hub, on_reload=self._register_persisted_hub_tools
+        )
         self.tools: dict[str, Callable[..., Any]] = {}
         self._tool_tiers: dict[str, ActionTier] = {}
         self._tool_definitions: dict[str, ToolDefinition] = {}
-        self.tool_dispatcher: dict[str, Callable[..., Coroutine[Any, Any, ToolExecutionResult]]] = {}
+        self.tool_dispatcher: dict[
+            str, Callable[..., Coroutine[Any, Any, ToolExecutionResult]]
+        ] = {}
         self._register_default_tools()
 
         # Runner & Chamber
         self.runner = NativeRunner(
-            model_adapter=model_adapter, policy_gate=self.policy_gate, tool_dispatcher=self.tool_dispatcher
+            model_adapter=model_adapter,
+            policy_gate=self.policy_gate,
+            tool_dispatcher=self.tool_dispatcher,
         )
         self.chamber = RecipeChamber(
-            runner=self.runner, session_repo=session_repo,
-            tool_tiers=self._tool_tiers, tool_definitions=self._tool_definitions,
+            runner=self.runner,
+            session_repo=session_repo,
+            tool_tiers=self._tool_tiers,
+            tool_definitions=self._tool_definitions,
         )
 
         # Signaling & Dispatch
         self.dispatcher = ZeroCatalogDispatcher(
             recipe_repo=recipe_repo, recipe_chamber=self.chamber, model_adapter=model_adapter
         )
-        self.capability_scout = CapabilityScout(wiki_store=self.wiki_store, model_adapter=model_adapter)
+        self.capability_scout = CapabilityScout(
+            wiki_store=self.wiki_store, model_adapter=model_adapter
+        )
         self.toolsmith = ToolsmithWorker(
-            workspace_manager=self.workspace_manager, command_runner=self.workspace_runner,
-            mcp_hub=self.mcp_hub, model_adapter=model_adapter, wiki_store=self.wiki_store,
+            workspace_manager=self.workspace_manager,
+            command_runner=self.workspace_runner,
+            mcp_hub=self.mcp_hub,
+            model_adapter=model_adapter,
+            wiki_store=self.wiki_store,
         )
         self.assembly_pipeline = JobAssemblyPipeline(
-            dispatcher=self.dispatcher, signaler=self.signaler, recipe_repo=recipe_repo,
-            capability_scout=self.capability_scout, toolsmith=self.toolsmith,
+            dispatcher=self.dispatcher,
+            signaler=self.signaler,
+            recipe_repo=recipe_repo,
+            capability_scout=self.capability_scout,
+            toolsmith=self.toolsmith,
             on_activate_tool=self.activate_tool_proposal,
         )
 
         # Scheduler with completion signaling and persistence (H6)
         signaling_sched_dispatcher = SchedulerSignalingDispatcher(
-            dispatcher=self.dispatcher, signaler=self.signaler,
-            session_repo=self.session_repo, tools=self.tools,
+            dispatcher=self.dispatcher,
+            signaler=self.signaler,
+            session_repo=self.session_repo,
+            tools=self.tools,
         )
         self.scheduler = EmbeddedSchedulerDaemon(
             dispatcher=signaling_sched_dispatcher,  # type: ignore[arg-type]
-            semaphore=self.semaphore, routine_repo=self.routine_repo,
+            semaphore=self.semaphore,
+            routine_repo=self.routine_repo,
         )
         ensure_default_routines(self.routine_repo)
         ensure_default_recipes(self.recipe_repo)
@@ -143,8 +175,13 @@ class AgentOSKernel:
     def _register_default_tools(self) -> None:
         """Register built-in tools and any persisted synthesized FastMCP hub tools."""
         tool_suites = (
-            self.wiki_tools, self.education_tools, self.telemetry_tools,
-            self.session_tools, self.workspace_tools, self.recipe_tools, self.tool_mgmt_tools,
+            self.wiki_tools,
+            self.education_tools,
+            self.telemetry_tools,
+            self.session_tools,
+            self.workspace_tools,
+            self.recipe_tools,
+            self.tool_mgmt_tools,
         )
         for s in tool_suites:
             for defn in s.get_definitions():
@@ -159,10 +196,12 @@ class AgentOSKernel:
             self.register_tool(f"mcp_hub_{name}", fn, ActionTier.STATE_CHANGE, definition=t_def)
 
     def register_tool(
-        self, name: str, fn: Callable[..., Any],
-        action_tier: ActionTier = ActionTier.STATE_CHANGE, definition: ToolDefinition | None = None,
+        self,
+        name: str,
+        fn: Callable[..., Any],
+        action_tier: ActionTier = ActionTier.STATE_CHANGE,
+        definition: ToolDefinition | None = None,
     ) -> None:
-
         """Register a new tool into the kernel execution and dispatch registry."""
         self.tools[name] = fn
         self._tool_tiers[name] = action_tier
@@ -173,11 +212,15 @@ class AgentOSKernel:
 
     def _register_mcp_tools(self, tools: list[ToolDefinition]) -> None:
         for t in tools:
+
             def _bind(name: str) -> Callable[..., Coroutine[Any, Any, ToolExecutionResult]]:
                 return lambda **kw: self.mcp_supervisor.call_tool(name, kw)
+
             self.register_tool(t.name, _bind(t.name), t.action_tier, definition=t)
             if t.name.startswith("mcp_hub_"):
-                self.register_tool(t.name[len("mcp_hub_"):], _bind(t.name), t.action_tier, definition=t)
+                self.register_tool(
+                    t.name[len("mcp_hub_") :], _bind(t.name), t.action_tier, definition=t
+                )
 
     async def mount_mcp_server(self, config: McpServerConfig) -> list[ToolDefinition]:
         """Mount an external or local MCP server and register its tools into active kernel."""
@@ -193,7 +236,9 @@ class AgentOSKernel:
         fn, tool_def = self.toolsmith.compile_tool_function(proposal)
         self.mcp_hub.register_tool_code(proposal.tool_name, proposal.code_snippet)
         self.register_tool(tool_def.name, fn, tool_def.action_tier, definition=tool_def)
-        self.register_tool(f"mcp_hub_{tool_def.name}", fn, tool_def.action_tier, definition=tool_def)
+        self.register_tool(
+            f"mcp_hub_{tool_def.name}", fn, tool_def.action_tier, definition=tool_def
+        )
         return [tool_def]
 
     async def execute_tool(
@@ -209,12 +254,25 @@ class AgentOSKernel:
             err = f"Blocked by policy gate: {decision.reason or 'Action rejected'}"
             return ToolExecutionResult(tool_name=tool_name, success=False, output="", error=err)
         if tool_name not in self.tool_dispatcher:
-            return ToolExecutionResult(tool_name=tool_name, success=False, output="", error=f"Tool '{tool_name}' not found")
-        async with self.collector.trace_operation(f"tool:{tool_name}", subsystem="kernel.tool", attributes={"tool": tool_name}):
+            return ToolExecutionResult(
+                tool_name=tool_name, success=False, output="", error=f"Tool '{tool_name}' not found"
+            )
+        async with self.collector.trace_operation(
+            f"tool:{tool_name}", subsystem="kernel.tool", attributes={"tool": tool_name}
+        ):
             res = await self.tool_dispatcher[tool_name](**params)
-            self.collector.record_counter("tool_executions_total", 1.0, {"tool": tool_name, "success": str(res.success).lower()})
+            self.collector.record_counter(
+                "tool_executions_total",
+                1.0,
+                {"tool": tool_name, "success": str(res.success).lower()},
+            )
             if not res.success:
-                self.collector.record_event("tool_failure", res.error or "Tool failure", severity="warning", payload={"tool": tool_name})
+                self.collector.record_event(
+                    "tool_failure",
+                    res.error or "Tool failure",
+                    severity="warning",
+                    payload={"tool": tool_name},
+                )
             return res
 
     async def stream_user_turn(self, request: UserTurnRequest) -> AsyncIterator[StreamTurnEvent]:
@@ -228,32 +286,47 @@ class AgentOSKernel:
                     tools = await self.activate_tool_proposal(name)
                     t_names = ", ".join(f"`{t.name}`" for t in tools)
                     msg = f"Tool `{name}` approved and mounted! Live tools: {t_names}"
-                    self.session_repo.append_turn(request.session_id, "user", request.user_input, 10)
+                    self.session_repo.append_turn(
+                        request.session_id, "user", request.user_input, 10
+                    )
                     t_rec = self.session_repo.append_turn(request.session_id, "assistant", msg, 20)
                     yield StreamTurnEvent(event_type="delta", delta=msg)
                     yield StreamTurnEvent(event_type="completed", turn=t_rec)
                     return
                 except Exception as exc:
-                    yield StreamTurnEvent(event_type="error", error_message=f"Failed to approve proposal `{name}`: {exc}")
+                    yield StreamTurnEvent(
+                        event_type="error",
+                        error_message=f"Failed to approve proposal `{name}`: {exc}",
+                    )
                     return
 
         facts = self.fact_prefetcher.prefetch_for_turn(request.user_input)
         chat_loop = CompanionChatLoop(
-            session_id=request.session_id, session_repo=self.session_repo,
-            model_adapter=self.model_adapter, config=CompanionConfig(name=self.config.companion_name),
-            context_window=self.config.context_window, reserve_output_tokens=self.config.reserve_output_tokens,
-            job_dispatcher=self.execute_job, tool_dispatcher=self.execute_tool,
+            session_id=request.session_id,
+            session_repo=self.session_repo,
+            model_adapter=self.model_adapter,
+            config=CompanionConfig(name=self.config.companion_name),
+            context_window=self.config.context_window,
+            reserve_output_tokens=self.config.reserve_output_tokens,
+            job_dispatcher=self.execute_job,
+            tool_dispatcher=self.execute_tool,
         )
         async for event in chat_loop.execute_turn(
             user_input=request.user_input,
             recalled_facts_block=facts.rendered_block,
-            background_completions_block=self.signaler.format_deferred_prompt_block(request.session_id),
+            background_completions_block=self.signaler.format_deferred_prompt_block(
+                request.session_id
+            ),
         ):
             yield event
 
     async def handle_user_turn(self, request: UserTurnRequest) -> TurnResponse:
         """Handle an interactive user turn with prefetching, background drain, and streaming."""
-        async with self.collector.trace_operation("kernel.user_turn", subsystem="kernel.chat", attributes={"session_id": request.session_id}):
+        async with self.collector.trace_operation(
+            "kernel.user_turn",
+            subsystem="kernel.chat",
+            attributes={"session_id": request.session_id},
+        ):
             self.collector.record_counter("user_turns_total", 1.0)
             facts_payload = self.fact_prefetcher.prefetch_for_turn(request.user_input)
             events: list[StreamTurnEvent] = []
@@ -264,33 +337,57 @@ class AgentOSKernel:
                 events.append(event)
                 if event.event_type == "delta":
                     parts.append(event.delta)
-                elif event.event_type == "job_dispatched" and isinstance(event.dispatched_job, PipelineExecutionResult):
+                elif event.event_type == "job_dispatched" and isinstance(
+                    event.dispatched_job, PipelineExecutionResult
+                ):
                     subjobs.append(event.dispatched_job)
                 elif event.event_type == "completed" and event.turn:
                     final_turn = event.turn.content
                 elif event.event_type == "error":
                     last_error = event.error_message or "Unknown error"
 
-            resp = "".join(parts) or final_turn or (f"Error during turn: {last_error}" if last_error else "")
+            resp = (
+                "".join(parts)
+                or final_turn
+                or (f"Error during turn: {last_error}" if last_error else "")
+            )
             return TurnResponse(
-                session_id=request.session_id, response_text=resp, stream_events=events,
-                recalled_facts_count=facts_payload.recalled_count, dispatched_subjobs=subjobs,
+                session_id=request.session_id,
+                response_text=resp,
+                stream_events=events,
+                recalled_facts_count=facts_payload.recalled_count,
+                dispatched_subjobs=subjobs,
                 ambient_nudges=self.signaler.poll_ambient_nudges(session_id=request.session_id),
             )
 
     async def execute_job(
-        self, session_id: str, task: str,
-        on_status: Callable[[str], Any] | None = None, context_payload: str = "",
+        self,
+        session_id: str,
+        task: str,
+        on_status: Callable[[str], Any] | None = None,
+        context_payload: str = "",
     ) -> PipelineExecutionResult:
         """Dispatch background task execution through dynamic job assembly line."""
-        async with self.collector.trace_operation("kernel.execute_job", subsystem="kernel.pipeline", attributes={"session_id": session_id, "task": task[:60]}):
+        async with self.collector.trace_operation(
+            "kernel.execute_job",
+            subsystem="kernel.pipeline",
+            attributes={"session_id": session_id, "task": task[:60]},
+        ):
             self.collector.record_counter("jobs_dispatched_total", 1.0)
             req = JobAssemblyRequest(
-                session_id=session_id, task=task, available_tools=list(self.tools.keys()), context_payload=context_payload,
+                session_id=session_id,
+                task=task,
+                available_tools=list(self.tools.keys()),
+                context_payload=context_payload,
             )
             res = await self.assembly_pipeline.run_pipeline(req, on_status=on_status)
             if not res.success:
-                self.collector.record_event("job_failure", res.error or "Job failed", severity="error", payload={"task": task[:60]})
+                self.collector.record_event(
+                    "job_failure",
+                    res.error or "Job failed",
+                    severity="error",
+                    payload={"task": task[:60]},
+                )
             return res
 
     async def trigger_scheduler_tick(self, now: datetime) -> list[RoutineExecutionLog]:

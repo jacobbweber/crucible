@@ -7,7 +7,7 @@ from agent_os.domain.kernel import UserTurnRequest
 from agent_os.domain.wiki import ProtectedFolder
 
 if TYPE_CHECKING:
-    from agent_os.kernel.master_kernel import AgentOSKernel
+    pass
 
 
 def create_mcp_server(kernel: Any, name: str = "agent-os-node") -> MCPServer:
@@ -204,9 +204,7 @@ def create_mcp_server(kernel: Any, name: str = "agent-os-node") -> MCPServer:
     # --------------------------------------------------------------------------
     # 3. Register MCP Prompts
     # --------------------------------------------------------------------------
-    @server.prompt(
-        "self_health_audit", description="Audit node vitals and stage RCA if degraded"
-    )
+    @server.prompt("self_health_audit", description="Audit node vitals and stage RCA if degraded")
     async def prompt_health_audit() -> str:
         return (
             "Please inspect the node's health summary and audit error traces. "

@@ -41,6 +41,18 @@ target-version = "py311"
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
 
+[tool.ruff.lint.per-file-ignores]
+# TEMPORARY (ADR-0015): long prompt literals in modules scheduled for rewrite/deletion.
+# Remove each entry when its phase lands; do not add new entries.
+"src/agent_os/kernel/capability_scout.py" = ["E501"]  # deleted, Phase 21
+"src/agent_os/kernel/pipeline.py" = ["E501"]  # rewritten, Phase 21
+"src/agent_os/kernel/toolsmith.py" = ["E501"]  # rewritten, Phase 23
+"src/agent_os/kernel/default_recipes.py" = ["E501"]  # migrated to contracts, Phase 20
+"src/agent_os/kernel/recipe_tools.py" = ["E501"]  # rewritten on contracts, Phase 20
+"src/agent_os/kernel/tool_management_tools.py" = ["E501"]  # rewritten, Phase 23
+"tests/integration/test_self_developing_toolsmith.py" = ["E501"]  # rewritten, Phase 23
+"tests/integration/test_end_to_end_dispatch.py" = ["E501"]  # rewritten, Phase 21
+
 [tool.pyright]
 include = ["src", "tests"]
 pythonVersion = "3.11"

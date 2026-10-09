@@ -1,7 +1,7 @@
 """Unit tests for CapabilityScout and dynamic MCP capability proposal staging."""
 
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -29,9 +29,7 @@ def test_identify_missing_domain():
     assert domain_present is None
 
     # 3. Git task without git tool
-    git_domain = scout.identify_missing_domain(
-        "commit changes to git repo", ["warehouse_read"]
-    )
+    git_domain = scout.identify_missing_domain("commit changes to git repo", ["warehouse_read"])
     assert git_domain == "Git Version Control"
 
     # 4. Standard warehouse task
@@ -55,7 +53,10 @@ def test_stage_mcp_proposal(tmp_path: Path):
     assert staged_file.exists()
 
     content = staged_file.read_text(encoding="utf-8")
-    assert "title: Capability Proposal - Docker Container Management via Model Context Protocol (MCP)" in content
+    assert (
+        "title: Capability Proposal - Docker Container Management via Model Context Protocol (MCP)"
+        in content
+    )
     assert "Option B: Dedicated MCP Server Integration (Recommended)" in content
     assert "Deterministic Sandboxing" in content
     assert "00_Inbox" in content

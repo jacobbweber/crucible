@@ -33,9 +33,13 @@ def make_tool_invoker(
             res = fn(**params)
             tool_res = await res if inspect.iscoroutine(res) else res
             if not isinstance(tool_res, ToolExecutionResult):
-                tool_res = ToolExecutionResult(tool_name=tool_name, success=True, output=str(tool_res))
+                tool_res = ToolExecutionResult(
+                    tool_name=tool_name, success=True, output=str(tool_res)
+                )
         except Exception as e:
-            tool_res = ToolExecutionResult(tool_name=tool_name, success=False, output="", error=str(e))
+            tool_res = ToolExecutionResult(
+                tool_name=tool_name, success=False, output="", error=str(e)
+            )
 
         output, error = tool_res.output, tool_res.error
         if resolved.secrets_to_scrub:
