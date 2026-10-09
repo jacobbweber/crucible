@@ -107,7 +107,6 @@ class AgentOSKernel:
 
         self._register_default_tools()
 
-
         # Runner & Chamber
         self.runner = NativeRunner(
             model_adapter=model_adapter,
@@ -127,7 +126,7 @@ class AgentOSKernel:
             recipe_chamber=self.chamber,
             model_adapter=model_adapter,
         )
-        self.capability_scout = CapabilityScout(wiki_store=self.wiki_store)
+        self.capability_scout = CapabilityScout(wiki_store=self.wiki_store, model_adapter=model_adapter)
         self.toolsmith = ToolsmithWorker(
             workspace_manager=self.workspace_manager,
             command_runner=self.workspace_runner,
@@ -141,6 +140,7 @@ class AgentOSKernel:
             recipe_repo=recipe_repo,
             capability_scout=self.capability_scout,
             toolsmith=self.toolsmith,
+            on_activate_tool=self.activate_tool_proposal,
         )
 
         # Scheduler with completion signaling and persistence (H6)
@@ -186,6 +186,8 @@ class AgentOSKernel:
             def _bind(name: str) -> Callable[..., Coroutine[Any, Any, ToolExecutionResult]]:
                 return lambda **kw: self.mcp_supervisor.call_tool(name, kw)
             self.register_tool(t.name, _bind(t.name), t.action_tier, definition=t)
+            if t.name.startswith("mcp_hub_"):
+                self.register_tool(t.name[len("mcp_hub_"):], _bind(t.name), t.action_tier, definition=t)
 
     async def mount_mcp_server(self, config: McpServerConfig) -> list[ToolDefinition]:
         """Mount an external or local MCP server and register its tools into active kernel."""

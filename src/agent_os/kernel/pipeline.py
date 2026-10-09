@@ -24,12 +24,14 @@ class JobAssemblyPipeline:
         recipe_repo: RecipeRepository,
         capability_scout: Any | None = None,
         toolsmith: Any | None = None,
+        on_activate_tool: Callable[[str], Any] | None = None,
     ) -> None:
         self.dispatcher = dispatcher
         self.signaler = signaler
         self.recipe_repo = recipe_repo
         self.capability_scout = capability_scout
         self.toolsmith = toolsmith
+        self.on_activate_tool = on_activate_tool
 
     def triage_capability_gap(self, task: str, available_tools: list[str]) -> CapabilityGapReport:
         """Triage whether a task can be satisfied by catalog recipes or requires synthesis."""
@@ -62,7 +64,6 @@ class JobAssemblyPipeline:
                 acknowledgment=ack_message,
             )
 
-
         return CapabilityGapReport(
             task=task,
             missing_capabilities=[],
@@ -88,13 +89,19 @@ class JobAssemblyPipeline:
         if (self.capability_scout or self.toolsmith) and gap_report.has_gap:
             missing_domain = None
             if self.capability_scout:
-                missing_domain = self.capability_scout.identify_missing_domain(
-                    request.task, request.available_tools
-                )
+                if hasattr(self.capability_scout, "evaluate_missing_domain"):
+                    missing_domain = await self.capability_scout.evaluate_missing_domain(
+                        request.task, request.available_tools
+                    )
+                else:
+                    missing_domain = self.capability_scout.identify_missing_domain(
+                        request.task, request.available_tools
+                    )
+
             if missing_domain:
                 if self.toolsmith:
                     if on_status is not None:
-                        res = on_status(f"Synthesizing FastMCP tool for '{missing_domain}' and running dry run...")
+                        res = on_status(f"Synthesizing capability for '{missing_domain}' in scratch workspace...")
                         if inspect.iscoroutine(res):
                             await res
                     from agent_os.domain.toolsmith import ToolsmithSynthesisRequest
@@ -102,6 +109,45 @@ class JobAssemblyPipeline:
                     synth_req = ToolsmithSynthesisRequest(task=request.task, domain=missing_domain, available_tools=request.available_tools)
                     prop = await self.toolsmith.synthesize_and_verify(synth_req)
                     staged_path = prop.staged_path
+
+                    if prop.verified and self.on_activate_tool is not None:
+                        if on_status is not None:
+                            res = on_status(f"Verified tool '{prop.tool_name}'. Mounting into live runtime...")
+                            if inspect.iscoroutine(res):
+                                await res
+                        try:
+                            new_tools = await self.on_activate_tool(prop.tool_name)
+                            mounted_tool_names = [t.name for t in new_tools]
+                            clean_names = [t.name.removeprefix("mcp_hub_") for t in new_tools if t.name.startswith("mcp_hub_")]
+                            all_new = mounted_tool_names + clean_names
+                            updated_tools = list(set(request.available_tools + all_new))
+
+                            if on_status is not None:
+                                res = on_status(f"Executing directive with active tool '{prop.tool_name}'...")
+                                if inspect.iscoroutine(res):
+                                    await res
+
+                            dispatch_res = await self.dispatcher.dispatch_task(
+                                request.session_id,
+                                request.task,
+                                available_tools=updated_tools,
+                                timeout_seconds=request.timeout_seconds,
+                                context_payload=request.context_payload,
+                            )
+                            self.signaler.signal_completion(request.session_id, dispatch_res.envelope)
+                            return PipelineExecutionResult(
+                                session_id=request.session_id,
+                                task=request.task,
+                                dispatch_result=dispatch_res,
+                                gap_report=gap_report,
+                                flagged_for_graduation=True,
+                            )
+                        except Exception as mount_err:
+                            if on_status is not None:
+                                res = on_status(f"Tool mounting encountered: {mount_err}. Falling back to proposal.")
+                                if inspect.iscoroutine(res):
+                                    await res
+
                     if prop.verified:
                         summary = (
                             f"[TOOL_PROPOSAL: {prop.tool_name}] Verified via pre-flight dry run. "

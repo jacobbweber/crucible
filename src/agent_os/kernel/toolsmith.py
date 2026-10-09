@@ -54,7 +54,7 @@ def {tool_name}(query: str = "status") -> str:
             return self._fallback_scaffold(task, domain)
 
         prompt = (
-            "You are an expert Python tool developer. Synthesize a clean Python FastMCP tool "
+            "You are an expert Python tool developer. Synthesize a clean, self-contained Python FastMCP tool "
             "decorated with @hub.tool() to satisfy the user task.\n"
             "Rules:\n"
             "1. Output ONLY a valid JSON object matching this schema:\n"
@@ -65,6 +65,10 @@ def {tool_name}(query: str = "status") -> str:
             '  "dry_run_args": {"<param>": "<sample_val>"}\n'
             "}\n"
             "2. Ensure the code snippet has typed parameters and returns a string or dict.\n"
+            "3. Include all necessary standard library imports inside the function body "
+            "(e.g. from pathlib import Path, import os, import subprocess) so the function is completely self-contained.\n"
+            "4. Ensure dry_run_args provides safe, valid sample arguments (e.g. for file operations use 'dry_run_test.txt') "
+            "so the pre-flight dry-run test invocation executes without crashing.\n"
             f"Task: {task}\n"
             f"Domain: {domain}\n"
         )
