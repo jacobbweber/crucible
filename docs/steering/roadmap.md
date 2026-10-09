@@ -34,8 +34,8 @@ Per `.agents/rules/live-testing.md`, every live test and smoke verification must
 | 12 | **FastMCP Tool Hub & Synthesis** | In-process dynamic tool execution | Live synthesis, ephemeral dry-run, in-process FastMCP mounting without Docker | H11 | ✅ Complete |
 | 13 | **Zero-Catalog Semantic Triage** | Autonomous capability gap scouting | LLM capability scout with anti-hijack guardrails, zero regex shortcuts | H1 | ✅ Complete |
 | 14 | **In-Process Compilation & Schemas** | Typed JSON parameter preservation | Dynamic parameter extraction via inspect, alias normalization, AnyIO scope isolation | H11, H12 | ✅ Complete |
-| 15 | **Recipe Contracts & Self-Authoring** | Declarative ingredients & autonomy | Recipe CRUD tools, ingredient schema contracts (tools/model/context), tool refactor/retire | H14 | 🚧 In Progress |
-| 16 | **Systemic Live Telemetry Hooks** | Active turn & pipeline tracing | Wire TelemetryCollector into user turn loop, pipeline runner, and tool invoker | H13 | 🚧 Active Backlog |
+| 15 | **Recipe Contracts & Self-Authoring** | Declarative ingredients & autonomy | Recipe CRUD tools, ingredient schema contracts (tools/model/context), tool refactor/retire | H14 | ✅ Complete |
+| 16 | **Systemic Live Telemetry Hooks** | Active turn & pipeline tracing | Wire TelemetryCollector into user turn loop, pipeline runner, and tool invoker | H13 | ✅ Complete |
 
 ---
 
@@ -61,8 +61,8 @@ Severity: 🔴 Critical · 🟠 High · 🟡 Medium · ⚪ Low
 | **H10** | 🟠 | Telemetry | Unbounded `telemetry.db` span growth on long-running nodes. | ✅ Fixed (Phase 11) |
 | **H11** | 🟠 | Runner / Hub | AnyIO cancel scope collision when executing synthesized tools across nested event loops. | ✅ Fixed (Phase 14) |
 | **H12** | 🟠 | Tools / Schema | ToolDefinition constructed with empty parameters `[]`, stripping arguments from ReAct prompt. | ✅ Fixed (Phase 14) |
-| **H13** | 🟠 | Telemetry | Telemetry database initialized but live runtime turns and pipelines uninstrumented. | 🚧 Open (Phase 16) |
-| **H14** | 🟠 | Autonomy | Crucible cannot inspect, refactor, or retire its own recipe ingredients or broken tools. | 🚧 Open (Phase 15) |
+| **H13** | 🟠 | Telemetry | Telemetry database initialized but live runtime turns and pipelines uninstrumented. | ✅ Fixed (Phase 16) |
+| **H14** | 🟠 | Autonomy | Crucible cannot inspect, refactor, or retire its own recipe ingredients or broken tools. | ✅ Fixed (Phase 15) |
 | **M1** | 🟡 | Layering | Raw SQL executed from kernel signaling dispatcher. | ✅ Fixed (Phase 5) |
 | **M2** | 🟡 | Chat | Foreign key violations on unknown session swallowed silently. | ✅ Fixed (Phase 5) |
 | **M3** | 🟡 | Education | Education datetime parsing and pedagogical advancement unwired. | ✅ Fixed (Phase 9) |
