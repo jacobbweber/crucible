@@ -45,7 +45,7 @@ Per `.agents/rules/live-testing.md`, every live test and smoke verification must
 | 18 | **Structured Gateway Channel** | Native tool calls + JSON-schema constrained output | Both targets: 9/9 schema-valid outputs, 9/9 streamed tool calls valid and correctly classified, 0/3 false tool calls on conversation | R2, G4–G7 | ✅ Complete |
 | 19 | **Ingredient Contracts & Vocabulary** | Typed contracts, capability signatures, vocabulary registry | Invalid contracts rejected on write; 8 crafting rules enforced; built-in suites declared; 280 tests pass | H14, R1 | ✅ Complete |
 | 20 | **Ingredient Store & Capability Index** | `ingredients.db`, versioned rows, in-process `EmbeddingProvider` (bge-small ONNX) + recall-only vector index | Seeded recipes migrated; rebuildable vector index; 288 tests pass | R1 | ✅ Complete |
-| 21 | **Intent Resolver** | Intent → Retrieve → Bind → Adjudicate | Paraphrased requests resolve to same recipe; params bind via schema; keyword triage deleted | R1 | ⏳ Planned |
+| 21 | **Intent Resolver** | Intent → Retrieve → Bind → Adjudicate | Paraphrased requests resolve to same recipe; parameters schema-bound; 295 tests pass | R1 | ✅ Complete |
 | 22 | **Companion Front Door** | `fulfill_request` native tool call | `[DISPATCH:]`/`[TOOL:]` regex removed; conversational turns never dispatch | R2 | ⏳ Planned |
 | 23 | **Contract-First Toolsmith & Sandboxed Hub** | Contract → implement → contract tests; out-of-process execution | Synthesized code never `exec`'d in kernel; mounting honors approval mode | R4, R5 | ⏳ Planned |
 | 24 | **Telemetry Fix & Lifecycle Promotion** | Tool-level journey steps; draft → candidate → active | Candidate promoted after verified runs on distinct inputs | R3 | ⏳ Planned |
