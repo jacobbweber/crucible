@@ -25,6 +25,21 @@ if __name__ == "__main__":
 '''
 
 
+def _find_tool_slice(code: str, tool_name: str) -> tuple[int, int] | None:
+    """Locate the starting (including decorator) and ending line of a tool function using AST."""
+    import ast
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return None
+    for node in tree.body:
+        if isinstance(node, ast.FunctionDef) and node.name == tool_name:
+            start_line = node.decorator_list[0].lineno if node.decorator_list else node.lineno
+            end_line = node.end_lineno or node.lineno
+            return (start_line - 1, end_line)
+    return None
+
+
 class McpHubManager:
     """Manages the lifecycle, code persistence, and hot-reload of the native FastMCP Hub."""
 
@@ -39,20 +54,60 @@ class McpHubManager:
             self.server_script.write_text(DEFAULT_HUB_TEMPLATE, encoding="utf-8")
         return self.server_script
 
+    def get_tool_code(self, tool_name: str) -> str | None:
+        """Extract the Python source code of a registered tool from hub_server.py."""
+        if not self.server_script.exists():
+            return None
+        code = self.server_script.read_text(encoding="utf-8")
+        span = _find_tool_slice(code, tool_name)
+        if not span:
+            return None
+        lines = code.splitlines(keepends=True)
+        return "".join(lines[span[0]:span[1]])
+
+    def refactor_tool_code(self, tool_name: str, new_code: str) -> bool:
+        """Replace the source code of an existing tool in hub_server.py."""
+        self.ensure_scaffold()
+        code = self.server_script.read_text(encoding="utf-8")
+        span = _find_tool_slice(code, tool_name)
+        if not span:
+            return False
+        lines = code.splitlines(keepends=True)
+        clean_new = new_code.strip() + "\n\n"
+        lines[span[0]:span[1]] = [clean_new]
+        self.server_script.write_text("".join(lines), encoding="utf-8")
+        return True
+
+    def retire_tool_code(self, tool_name: str) -> bool:
+        """Retire and remove a tool function from hub_server.py."""
+        if not self.server_script.exists():
+            return False
+        code = self.server_script.read_text(encoding="utf-8")
+        span = _find_tool_slice(code, tool_name)
+        if not span:
+            return False
+        lines = code.splitlines(keepends=True)
+        del lines[span[0]:span[1]]
+        self.server_script.write_text("".join(lines), encoding="utf-8")
+        return True
+
     def register_tool_code(self, tool_name: str, code_snippet: str) -> None:
         """Append or update a @hub.tool() function snippet in the hub server script."""
         self.ensure_scaffold()
-        content = self.server_script.read_text(encoding="utf-8")
+        code = self.server_script.read_text(encoding="utf-8")
+        if _find_tool_slice(code, tool_name) is not None:
+            self.refactor_tool_code(tool_name, code_snippet)
+            return
 
         # Marker before entry point
         entry_marker = 'if __name__ == "__main__":'
         clean_snippet = code_snippet.strip() + "\n\n"
 
-        if entry_marker in content:
-            pre, post = content.split(entry_marker, 1)
+        if entry_marker in code:
+            pre, post = code.split(entry_marker, 1)
             updated_content = f"{pre.rstrip()}\n\n{clean_snippet}{entry_marker}{post}"
         else:
-            updated_content = f"{content.rstrip()}\n\n{clean_snippet}\n{entry_marker}\n    hub.run()\n"
+            updated_content = f"{code.rstrip()}\n\n{clean_snippet}\n{entry_marker}\n    hub.run()\n"
 
         self.server_script.write_text(updated_content, encoding="utf-8")
 

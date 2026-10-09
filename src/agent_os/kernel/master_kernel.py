@@ -37,6 +37,7 @@ from agent_os.kernel.pipeline import JobAssemblyPipeline
 from agent_os.kernel.policy_gate import ToolPolicyGate
 from agent_os.kernel.rca_stager import RcaProposalStager
 from agent_os.kernel.recipe_chamber import RecipeChamber
+from agent_os.kernel.recipe_tools import RecipeToolSuite
 from agent_os.kernel.runner import NativeRunner
 from agent_os.kernel.scheduler import EmbeddedSchedulerDaemon
 from agent_os.kernel.scheduler_dispatcher import SchedulerSignalingDispatcher
@@ -46,6 +47,7 @@ from agent_os.kernel.srs_engine import SRSEngine
 from agent_os.kernel.telemetry_collector import TelemetryCollector
 from agent_os.kernel.telemetry_tools import TelemetryToolSuite
 from agent_os.kernel.tool_invoker import make_tool_invoker
+from agent_os.kernel.tool_management_tools import ToolManagementSuite
 from agent_os.kernel.toolsmith import ToolsmithWorker
 from agent_os.kernel.wiki_tools import WikiToolSuite
 from agent_os.kernel.workspace_tools import WorkspaceToolSuite
@@ -93,6 +95,8 @@ class AgentOSKernel:
         self.workspace_tools = WorkspaceToolSuite(self.workspace_manager, self.workspace_runner)
         self.mcp_supervisor = McpClientSupervisor()
         self.mcp_hub = McpHubManager(ws_root)
+        self.recipe_tools = RecipeToolSuite(recipe_repo=recipe_repo)
+        self.tool_mgmt_tools = ToolManagementSuite(mcp_hub=self.mcp_hub, on_reload=self._register_persisted_hub_tools)
         self.tools: dict[str, Callable[..., Any]] = {}
         self._tool_tiers: dict[str, ActionTier] = {}
         self._tool_definitions: dict[str, ToolDefinition] = {}
@@ -138,10 +142,18 @@ class AgentOSKernel:
 
     def _register_default_tools(self) -> None:
         """Register built-in tools and any persisted synthesized FastMCP hub tools."""
-        for s in (self.wiki_tools, self.education_tools, self.telemetry_tools, self.session_tools, self.workspace_tools):
+        tool_suites = (
+            self.wiki_tools, self.education_tools, self.telemetry_tools,
+            self.session_tools, self.workspace_tools, self.recipe_tools, self.tool_mgmt_tools,
+        )
+        for s in tool_suites:
             for defn in s.get_definitions():
                 if fn := getattr(s, defn.name, None):
                     self.register_tool(defn.name, fn, defn.action_tier, definition=defn)
+        self._register_persisted_hub_tools()
+
+    def _register_persisted_hub_tools(self) -> None:
+        """Load and register in-process callable FastMCP tools."""
         for name, (fn, t_def) in self.mcp_hub.load_persisted_tools().items():
             self.register_tool(name, fn, ActionTier.STATE_CHANGE, definition=t_def)
             self.register_tool(f"mcp_hub_{name}", fn, ActionTier.STATE_CHANGE, definition=t_def)
@@ -198,7 +210,12 @@ class AgentOSKernel:
             return ToolExecutionResult(tool_name=tool_name, success=False, output="", error=err)
         if tool_name not in self.tool_dispatcher:
             return ToolExecutionResult(tool_name=tool_name, success=False, output="", error=f"Tool '{tool_name}' not found")
-        return await self.tool_dispatcher[tool_name](**params)
+        async with self.collector.trace_operation(f"tool:{tool_name}", subsystem="kernel.tool", attributes={"tool": tool_name}):
+            res = await self.tool_dispatcher[tool_name](**params)
+            self.collector.record_counter("tool_executions_total", 1.0, {"tool": tool_name, "success": str(res.success).lower()})
+            if not res.success:
+                self.collector.record_event("tool_failure", res.error or "Tool failure", severity="warning", payload={"tool": tool_name})
+            return res
 
     async def stream_user_turn(self, request: UserTurnRequest) -> AsyncIterator[StreamTurnEvent]:
         """Stream an interactive user turn progressively (K1)."""
@@ -236,42 +253,45 @@ class AgentOSKernel:
 
     async def handle_user_turn(self, request: UserTurnRequest) -> TurnResponse:
         """Handle an interactive user turn with prefetching, background drain, and streaming."""
-        facts_payload = self.fact_prefetcher.prefetch_for_turn(request.user_input)
-        events: list[StreamTurnEvent] = []
-        parts: list[str] = []
-        subjobs: list[PipelineExecutionResult] = []
-        final_turn, last_error = "", ""
+        async with self.collector.trace_operation("kernel.user_turn", subsystem="kernel.chat", attributes={"session_id": request.session_id}):
+            self.collector.record_counter("user_turns_total", 1.0)
+            facts_payload = self.fact_prefetcher.prefetch_for_turn(request.user_input)
+            events: list[StreamTurnEvent] = []
+            parts, subjobs = [], []
+            final_turn, last_error = "", ""
 
-        async for event in self.stream_user_turn(request):
-            events.append(event)
-            if event.event_type == "delta":
-                parts.append(event.delta)
-            elif event.event_type == "job_dispatched" and isinstance(event.dispatched_job, PipelineExecutionResult):
-                subjobs.append(event.dispatched_job)
-            elif event.event_type == "completed" and event.turn:
-                final_turn = event.turn.content
-            elif event.event_type == "error":
-                last_error = event.error_message or "Unknown error"
+            async for event in self.stream_user_turn(request):
+                events.append(event)
+                if event.event_type == "delta":
+                    parts.append(event.delta)
+                elif event.event_type == "job_dispatched" and isinstance(event.dispatched_job, PipelineExecutionResult):
+                    subjobs.append(event.dispatched_job)
+                elif event.event_type == "completed" and event.turn:
+                    final_turn = event.turn.content
+                elif event.event_type == "error":
+                    last_error = event.error_message or "Unknown error"
 
-        resp = "".join(parts) or final_turn or (f"Error during turn: {last_error}" if last_error else "")
-        return TurnResponse(
-            session_id=request.session_id, response_text=resp, stream_events=events,
-            recalled_facts_count=facts_payload.recalled_count, dispatched_subjobs=subjobs,
-            ambient_nudges=self.signaler.poll_ambient_nudges(session_id=request.session_id),
-        )
+            resp = "".join(parts) or final_turn or (f"Error during turn: {last_error}" if last_error else "")
+            return TurnResponse(
+                session_id=request.session_id, response_text=resp, stream_events=events,
+                recalled_facts_count=facts_payload.recalled_count, dispatched_subjobs=subjobs,
+                ambient_nudges=self.signaler.poll_ambient_nudges(session_id=request.session_id),
+            )
 
     async def execute_job(
         self, session_id: str, task: str,
         on_status: Callable[[str], Any] | None = None, context_payload: str = "",
     ) -> PipelineExecutionResult:
         """Dispatch background task execution through dynamic job assembly line."""
-        req = JobAssemblyRequest(
-            session_id=session_id,
-            task=task,
-            available_tools=list(self.tools.keys()),
-            context_payload=context_payload,
-        )
-        return await self.assembly_pipeline.run_pipeline(req, on_status=on_status)
+        async with self.collector.trace_operation("kernel.execute_job", subsystem="kernel.pipeline", attributes={"session_id": session_id, "task": task[:60]}):
+            self.collector.record_counter("jobs_dispatched_total", 1.0)
+            req = JobAssemblyRequest(
+                session_id=session_id, task=task, available_tools=list(self.tools.keys()), context_payload=context_payload,
+            )
+            res = await self.assembly_pipeline.run_pipeline(req, on_status=on_status)
+            if not res.success:
+                self.collector.record_event("job_failure", res.error or "Job failed", severity="error", payload={"task": task[:60]})
+            return res
 
     async def trigger_scheduler_tick(self, now: datetime) -> list[RoutineExecutionLog]:
         """Trigger background scheduler tick and return execution audit logs."""

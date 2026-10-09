@@ -38,3 +38,13 @@ class PipelineExecutionResult(BaseModel):
     gap_report: CapabilityGapReport
     flagged_for_graduation: bool = False
     completed_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+    @property
+    def success(self) -> bool:
+        """True if the underlying job dispatch succeeded."""
+        return self.dispatch_result.success
+
+    @property
+    def error(self) -> str | None:
+        """Error string if the job dispatch failed."""
+        return self.dispatch_result.error

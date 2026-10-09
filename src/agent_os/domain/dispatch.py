@@ -22,3 +22,13 @@ class DispatchResult(BaseModel):
 
     decision: DispatchDecision
     envelope: SubJobReturnEnvelope
+
+    @property
+    def success(self) -> bool:
+        """True if the worker execution completed successfully."""
+        return self.envelope.status == "completed"
+
+    @property
+    def error(self) -> str | None:
+        """Error string if the worker execution did not complete."""
+        return None if self.success else self.envelope.summary
