@@ -28,10 +28,10 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         default="stdio",
         help="MCP transport protocol (default: stdio)",
     )
-    p.add_argument("--host", default="127.0.0.1", help="Host binding (default: 127.0.0.1)")
+    p.add_argument("--host", default=None, help="Host binding (default: from .env or 127.0.0.1)")
     p.add_argument("--port", type=int, default=8000, help="MCP SSE port (default: 8000)")
     p.add_argument("--ui", action="store_true", help="run the local companion Web UI")
-    p.add_argument("--ui-port", type=int, default=3000, help="Web UI port (default: 3000)")
+    p.add_argument("--ui-port", type=int, default=None, help="Web UI port (default: from .env or 3000)")
     return p.parse_args(argv)
 
 
@@ -115,11 +115,12 @@ def main(argv: list[str] | None = None) -> None:
             f"agent-os MCP gateway | data={runtime.data_dir} | transport={args.transport} "
             f"| node={args.name}"
         )
+        mcp_host = args.host or "127.0.0.1"
         asyncio.run(
             run_mcp_server(
                 kernel=runtime.kernel,
                 transport=args.transport,
-                host=args.host,
+                host=mcp_host,
                 port=args.port,
                 name=args.name,
             )
@@ -129,10 +130,12 @@ def main(argv: list[str] | None = None) -> None:
     if args.ui:
         from agent_os.web.runner import run_web_server
 
+        ui_host = args.host or app_config.web_host
+        ui_port = args.ui_port or app_config.web_port
         console.info(
-            f"agent-os Web UI | data={runtime.data_dir} | http://{args.host}:{args.ui_port}"
+            f"agent-os Web UI | data={runtime.data_dir} | http://{ui_host}:{ui_port}"
         )
-        run_web_server(kernel=runtime.kernel, host=args.host, port=args.ui_port)
+        run_web_server(kernel=runtime.kernel, host=ui_host, port=ui_port)
         return
 
     console.info(f"agent-os REPL | data={runtime.data_dir}")

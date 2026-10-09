@@ -22,6 +22,15 @@ class AppConfig(BaseSettings):
     vllm_enable_thinking: bool | None = None
     # Optional passphrase for vault key derivation; a random keyfile is used when unset.
     vault_passphrase: str | None = None
+    # Web UI server configuration
+    web_host: str = Field(
+        default="127.0.0.1",
+        validation_alias=AliasChoices("AGENT_OS_WEB_HOST", "WEB_HOST", "web_host"),
+    )
+    web_port: int = Field(
+        default=3000,
+        validation_alias=AliasChoices("AGENT_OS_WEB_PORT", "WEB_PORT", "web_port"),
+    )
 
     model_config = SettingsConfigDict(
         env_file=".env",
